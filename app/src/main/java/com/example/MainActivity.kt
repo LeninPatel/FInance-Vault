@@ -331,12 +331,37 @@ fun FinanceVaultApp(
     }
 
     val triggerVoiceCommandOnDemand: () -> Unit = {
-        if (hasAudioPermission) {
+        val hasLocationPerm = ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_FINE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED || ContextCompat.checkSelfPermission(
+            context,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        ) == PackageManager.PERMISSION_GRANTED
+
+        if (hasAudioPermission && hasLocationPerm) {
             voiceController.toggleListeningSession()
+        } else if (hasAudioPermission && !hasLocationPerm) {
+            // Start listening immediately and request location permission in parallel if needed
+            voiceController.toggleListeningSession()
+            runCatching {
+                permissionsLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
+                )
+            }
         } else {
             pendingStartVoiceAfterPermission = true
             runCatching {
-                permissionsLauncher.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
+                permissionsLauncher.launch(
+                    arrayOf(
+                        Manifest.permission.RECORD_AUDIO,
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    )
+                )
             }
         }
     }
@@ -347,18 +372,30 @@ fun FinanceVaultApp(
         }
     }
 
-    // Request notification permission for 6-hour recall reminders if needed (never auto-start microphone on launch)
+    // Request notification and location permissions on launch (never auto-start microphone on launch)
     LaunchedEffect(uiState.isInitializing, uiState.isLockedByPin) {
         if (!uiState.isInitializing && !uiState.isLockedByPin) {
+            val permsToRequest = mutableListOf<String>()
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 val hasNotifPerm = ContextCompat.checkSelfPermission(
                     context,
                     Manifest.permission.POST_NOTIFICATIONS
                 ) == PackageManager.PERMISSION_GRANTED
                 if (!hasNotifPerm) {
-                    runCatching {
-                        permissionsLauncher.launch(arrayOf(Manifest.permission.POST_NOTIFICATIONS))
-                    }
+                    permsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+                }
+            }
+            val hasLocPerm = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+            if (!hasLocPerm) {
+                permsToRequest.add(Manifest.permission.ACCESS_FINE_LOCATION)
+                permsToRequest.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+            }
+            if (permsToRequest.isNotEmpty()) {
+                runCatching {
+                    permissionsLauncher.launch(permsToRequest.toTypedArray())
                 }
             }
         }

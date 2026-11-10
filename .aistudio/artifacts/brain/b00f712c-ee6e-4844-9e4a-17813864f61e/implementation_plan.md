@@ -1,90 +1,69 @@
-# Voice Microphone 4-Second Grace Timer, Instant Mute/Cancel & Full Voice Deletion Fix
+# Implementation Plan: Analytics Dashboard Expansion, Multi-Turn Voice AI Slot-Filling, Clean Transaction Descriptions, Universal High-Precision GPS & Home "Statements" Card Update
 
-This plan upgrades the on-demand Voice Command controller so the microphone gives you a full **3 to 4 second (4,000 ms) grace period** both before you begin speaking and after you pause speaking before auto-closing, guarantees that tapping the microphone/mute button immediately stops listening, cancels processing, and mutes any spoken reply, and fixes voice delete commands across all items (transactions, accounts, subscriptions, budgets, goals, and loans).
-
-## User Review & Critical Decisions
-
-> [!IMPORTANT]
-> The following decisions were confirmed during clarification and govern this update:
-
-- **Confirmed Decision 1 — 4-Second Pre-Speech & Post-Speech Grace Timer with Auto-Close**: When you tap the microphone button, the microphone waits a full **4 seconds** for you to start speaking and waits **4 seconds** after you pause speaking before finalizing your command and auto-closing. If Android's speech recognizer closes early during a brief pause before 4 seconds have elapsed, the controller seamlessly holds the 4-second window open (accumulating any partial transcript) and auto-closes cleanly once the 4-second silence window expires.
-- **Confirmed Decision 2 — Smart Voice Deletion with Multi-Option Disambiguation**: Saying *"Delete transaction"*, *"Delete my coffee expense"*, *"Delete subscription"*, *"Delete budget"*, *"Delete savings goal"*, or *"Delete account"* will immediately delete/reverse the item if only one matches (or the latest one if unspecified), or ask you aloud and on screen which item to delete when multiple items match—with full *"Undo"* support.
-- **Confirmed Decision 3 — Instant All-State Mute & Cancel Button**: Tapping the microphone/mute button while the app is **listening**, **processing ("Recording...")**, or **speaking a reply** immediately stops the microphone, cancels any in-flight command processing, clears any pending follow-up prompt, and mutes `TextToSpeech` output.
+## 1. Overview
+This plan upgrades five key areas of **Bharat Finance Vault**:
+1. **Rich Analytics & Financial Performance Dashboard**: Expand `AnalyticsScreen` with category-wise spending breakdown charts and percentages, monthly income vs. expense trend and net cash flow visualization, daily spending velocity / average ticket size / budget utilization metrics, and account-wise outflow comparisons alongside investment vs. debt health gauges.
+2. **Multi-Turn Voice AI Follow-Up Questions (Missing Category, Account, or Amount)**: Enable the Voice AI to detect when any required transaction slot (**Amount**, **Category**, or **Account**) is missing or has multiple options, and ask back interactive spoken + on-screen follow-up questions to fill the missing details before recording the transaction.
+3. **Clean Transaction History (Remove Voice Transcript Clutter)**: Remove `"Voice Expense: ... (<spoken transcript>)"` prefixes and raw voice transcripts from transaction descriptions so voice-recorded transactions look clean and natural alongside manually entered expenses.
+4. **High-Precision Live GPS Street, Area & Coordinates on Both Voice AND Manual Transactions**: Upgrade `LocationHelper` to fetch live `PRIORITY_HIGH_ACCURACY` GPS street, area, and coordinates, and automatically attach them to **both** voice-recorded transactions and normal manual entry transactions (`RecordTransactionDialog` / `recordTransaction`).
+5. **Main Dashboard Home Screen "Statements" Card Refinement**: Update the `"Indian Financial Statements & Ledgers"` card on the Home screen so its title and font cleanly read **"Statements"**, and display the current **Balance** and active report summary (`Balance Sheet / Net Worth & P&L status`).
 
 ---
 
-## 1. Overview & Core Concept
-
-- **What It Does**:
-  1. **4-Second Pre- & Post-Speech Delay & Auto-Close**: Gives users natural time to think before speaking and to pause mid-thought (e.g., recalling an amount or merchant name) without the microphone cutting off prematurely, then automatically closes after 4 seconds of silence.
-  2. **Unbreakable Microphone & Mute Button**: Fixes the state deadlock where `isProcessingCommand` ("Recording...") blocked the mute/stop button and prevented subsequent voice sessions if a command took too long or failed.
-  3. **Full Voice Deletion Engine**: Adds instant local & AI parsing for deleting/removing any transaction (by keyword, category, amount, or latest), account, subscription, budget, or savings goal—with multi-option voice disambiguation when multiple records match.
-- **Target Audience / Persona**: Users logging or managing finances hands-free who pause for a couple of seconds while recalling transaction details or who want to delete an entry or mute the assistant at any moment.
-- **Key Value**: Eliminates premature microphone cutoffs, fixes the "Recording..." freeze on delete commands, and ensures the mute button responds instantaneously in every state.
+## 2. Main Dashboard Home Screen "Statements" Card (`HomeAndAccountsScreens.kt`)
+- **Concise Title & Refined Typography**:
+  - Change the card label from `"Indian Financial Statements & Ledgers"` to **"Statements"** with a clean, refined font style (`MaterialTheme.typography.titleSmall`, `FontWeight.SemiBold`).
+- **Live Balance & Current Report Status**:
+  - Display the current **Balance** (`Net Worth / Total Assets Balance: ₹...`) and current report status (`Balance Sheet: Balanced • Net P&L: ₹...`) directly inside the card and right-side status badge so the user immediately sees the current report balance at a glance.
 
 ---
 
-## 2. User Experience & Visual Design
-
-- **Key User Flows**:
-  1. **Delayed Speech with 4-Second Auto-Close**:
-     - User taps the right-side floating Microphone button.
-     - The floating status pill shows **"Listening (4s grace)... Speak now"**.
-     - If the user waits 2.5 seconds before speaking *"Delete my last grocery transaction"*, the microphone stays open, captures the full sentence, waits up to 4 seconds after the user finishes speaking in case they add more words, and then auto-closes and executes the command.
-     - If the user says nothing for 4 seconds, the microphone auto-closes cleanly to save battery.
-  2. **Deleting Any Item by Voice**:
-     - User says *"Delete transaction"*, *"Delete 450 transaction"*, *"Delete food expense"*, *"Delete Netflix"*, *"Delete grocery budget"*, or *"Delete account"*.
-     - If 1 item matches (or the user asked to delete the latest transaction), it is reversed/deleted immediately and the app speaks confirmation (*"Deleted ₹450 Food & Dining transaction. Say Undo to restore it."*).
-     - If multiple items match (e.g., 3 Food & Dining transactions or 2 budgets), the app displays the **Voice Disambiguation Card** and asks aloud which one to delete.
-  3. **Instant Mute / Stop Anytime**:
-     - Anytime the floating button is active (Listening, Processing, or Speaking a reply), the button shows the **Coral `MicOff` (Mute/Stop)** state. Tapping it immediately cancels the active operation, silences speech, and resets the microphone to idle.
-- **Visual Identity & Theme**:
-  - Preserves the **Obsidian & Emerald** theme (`VaultObsidianBg`, `VaultEmerald`, `VaultCoral`, `VaultGold`, `VaultCyan`) and the right-side circular floating microphone button above the bottom navigation bar.
+## 3. Expanded Analytics & Financial Performance Dashboard (`ReportsAndAnalyticsScreens.kt`)
+- **Daily Spending Velocity, Average Ticket Size & Budget Utilization Strip**:
+  - Compute and display **Daily Spending Velocity** (`₹/day` over the active fiscal/month window), **Average Ticket Size** (`Total Expense / Expense Count`), **Transaction Frequency**, and **Overall Budget Utilization %** in a responsive KPI strip.
+- **Category-Wise Spending Breakdown Chart & Percentages**:
+  - Add a custom Jetpack Compose **Multi-Segment Donut Chart** (`Canvas`) paired with ranked category breakdown rows showing each category's color badge, total ₹ spent, transaction count, and exact percentage share (`%`) of total outflow.
+- **Monthly Income vs. Expense Trend & Net Cash Flow Chart**:
+  - Build a **Monthly Cash Flow Trend Chart** displaying month-by-month **Income** (Emerald bars), **Expense** (Coral bars), and **Net Cash Flow Surplus/Deficit** indicators across the last 6 active months / fiscal year.
+- **Budget Utilization & Day-of-Week Spending Distribution**:
+  - Add a **Budget Utilization Breakdown Card** comparing each active budget's limit against actual category spend with color-coded progress bars (`Safe`, `Near Limit`, `Exceeded`).
+  - Include a **Day-of-Week Spending Velocity Bar Chart** (`Mon`–`Sun`) highlighting peak spending days.
+- **Account-Wise Outflow Comparison & Investment vs. Debt Health Gauges**:
+  - Add an **Account-Wise Outflow & Inflow Comparison Card** showing each bank/UPI/cash account's share of total spending, inflow, and net movement.
+  - Add **Investment vs. Debt Health Gauges** displaying Asset-to-Debt Coverage Ratio, Liquid-to-Liability Cushion, and Portfolio vs. Loan Principal visual progress bars.
 
 ---
 
-## 3. Key Product Decisions & Trade-Offs
-
-- **Decision 1: Two-Layer 4,000 ms Silence & Auto-Close Controller**
-  - *Chosen Approach*: Configure `RecognizerIntent` with 4,000 ms silence parameters (`EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS = 4000L`, `EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS = 4000L`, `EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS = 4000L`) **plus** an explicit `Handler`-backed 4,000 ms silence watchdog in `VoiceTransactionController`.
-  - *Why*: Many Android OEM speech engines ignore `RecognizerIntent` extras and fire `ERROR_SPEECH_TIMEOUT` or `onResults` after only 1.2 seconds of silence. By combining a 4-second pre-speech window (automatically continuing listening if the OS times out before 4 seconds) and a 4-second post-speech buffer (committing the accumulated transcript after 4 seconds of silence following speech), the microphone reliably waits 3–4 seconds on all Android devices and then auto-closes.
-- **Decision 2: Cancellable Coroutine Job & `try / finally` State Reset for Voice Execution**
-  - *Chosen Approach*: Track `activeVoiceCommandJob: Job?` in `FinanceVaultViewModel` and wrap `executeVoiceOrGeminiCommand` in a `try / finally` block that always invokes `onFinished` unless explicitly cancelled by the user's mute button.
-  - *Why*: Guarantees `isProcessingCommand` can never get stuck on `"Recording..."` and allows tapping the mute button to cancel a running command immediately.
+## 4. Multi-Turn Voice AI Follow-Up Questions for Missing Slots (`GeminiVaultAssistant.kt` & `FinanceVaultViewModel.kt`)
+- **Explicit Slot Detection**:
+  - Track whether a spoken transaction command explicitly supplied:
+    1. **Amount** (`amountPaise > 0L` — e.g., if the user says *"Record an expense for dinner at Starbucks"* without an amount).
+    2. **Category** (`isCategoryExplicit: Boolean` — instead of silently defaulting to `"Household & Groceries"` when no category keyword or historical pattern matches, mark the category as unfulfilled when the user says *"Spent 500 rupees"*).
+    3. **Account** (when multiple accounts exist and neither the spoken command nor a learned historical pattern uniquely identifies the account).
+- **Sequential Follow-Up Prompting (`DisambiguationStage`)**:
+  - Extend `PendingVoiceDisambiguation` to support sequential slot completion:
+    - **Missing Amount**: Voice AI asks *"How much was the transaction for?"* and listens for a spoken amount (or lets the user tap a quick amount).
+    - **Missing or Ambiguous Category**: Voice AI asks *"Which category should I use for ₹X?"*, displays selectable category chips (`Food & Dining`, `Household & Groceries`, `Transportation & Fuel`, `Utilities & Recharge`, `Shopping & Lifestyle`, `Healthcare & Medical`, `Entertainment & Media`, etc.), and automatically opens the microphone so the user can speak the category name or option number.
+    - **Missing or Ambiguous Account**: Voice AI asks *"Which account should I use for this ₹X <Category> transaction?"*, displays the matching accounts, and listens for the user's spoken reply or tap.
+  - Once all required fields (**Amount**, **Category**, and **Account**) are fulfilled, the transaction is immediately saved and confirmed via TTS.
 
 ---
 
-## 4. Technical Architecture & Data Strategy *(Technical Reference)*
+## 5. Clean Voice Transaction Descriptions (`GeminiVaultAssistant.kt` & `FinanceVaultViewModel.kt`)
+- **Eliminate Raw Transcript Clutter**:
+  - Update `buildCleanNarration` and AI JSON response normalization in `GeminiVaultAssistant.kt` so that `description` never includes `"Voice Expense:"`, `"Voice Income:"`, `"Voice Transfer:"`, or the parenthesized `(rawText)` voice transcript.
+  - Format descriptions cleanly just like normal transactions—using the extracted item/merchant/counterparty name (e.g., `"Coffee • Starbucks"`, `"Groceries"`, or the clean category title `"Food & Dining"` when no extra note was spoken).
 
-```
-┌───────────────────────────────────────────────────────────────────────────┐
-│                Right-Side Floating Mic / Mute Button (FAB)                │
-│  • Idle -> Tap starts 4s Listening Session                                │
-│  • Listening / Processing / Speaking -> Tap Mutes & Cancels Immediately   │
-└───────────────────────────────┬───────────────────────────────────────────┘
-                                │
-                                ▼
-┌───────────────────────────────────────────────────────────────────────────┐
-│                      VoiceTransactionController                           │
-│  • Pre-Speech Timer (4,000 ms): Keeps mic alive up to 4s before speech    │
-│  • Post-Speech Timer (4,000 ms): Buffers segments & auto-closes after 4s  │
-│  • stopAndMuteAll(): Cancels recognizer, TTS, timers & active VM Job      │
-└───────────────────────────────┬───────────────────────────────────────────┘
-                                │
-                                ▼
-┌───────────────────────────────────────────────────────────────────────────┐
-│             GeminiVaultAssistant + FinanceVaultViewModel                  │
-│  • Instant Local Delete Parser: DELETE_TRANSACTION, DELETE_SUBSCRIPTION,  │
-│    DELETE_BUDGET, DELETE_GOAL, ARCHIVE_ACCOUNT, REVERSE_LAST_TRANSACTION  │
-│  • Multi-Option Disambiguation when >1 item matches + Full Voice Undo     │
-└───────────────────────────────────────────────────────────────────────────┘
-```
+---
 
-- **Interactive Component & State Mapping**:
-  - `VoiceTransactionController`:
-    - Tracks `accumulatedTranscript` and `lastSpeechActivityTimeMs`.
-    - Enforces a 4,000 ms pre-speech timeout and a 4,000 ms post-speech silence timeout before finalizing and auto-closing the microphone.
-    - Exposes `stopAndMuteAll()` so tapping the button during `isActivelyListening`, `isProcessingCommand`, or `isSpeakingReply` immediately stops the mic, cancels the ViewModel job, and stops `TextToSpeech`.
-  - `GeminiVaultAssistant` & `FinanceVaultViewModel`:
-    - Adds `DELETE_TRANSACTION`, `DELETE_BUDGET`, and `DELETE_GOAL` alongside `DELETE_SUBSCRIPTION`, `ARCHIVE_ACCOUNT`, and `REVERSE_LAST_TRANSACTION`.
-    - Matches transactions by keyword, category, merchant, or amount; if multiple transactions match, presents up to 5 matching transactions in the `VoiceDisambiguationOverlayCard` and speaks the options aloud; if only one matches (or generic *"delete transaction"*), reverses it immediately and stores an `UndoableVoiceAction`.
+## 6. High-Precision Live GPS Location for Both Voice AND Manual Transactions (`LocationAndAuthHelper.kt`, `VaultCommonComponents.kt`, `MainActivity.kt` & `FinanceVaultViewModel.kt`)
+- **High-Accuracy GPS & Street-Level Reverse Geocoding (`LocationAndAuthHelper.kt`)**:
+  - Upgrade `LocationHelper.fetchCurrentLocation` to use `CurrentLocationRequest.Builder().setPriority(Priority.PRIORITY_HIGH_ACCURACY).setMaxUpdateAgeMillis(10_000L).setDurationMillis(3_500L).build()` with a fallback to the freshest high-accuracy fix across `GPS_PROVIDER` and `NETWORK_PROVIDER`.
+  - Remove the hardcoded `"Connaught Place, New Delhi"` fallback coordinate so only genuine device location fixes are used.
+  - Format `placeName` in `LocationHelper` to include the street/thoroughfare (`thoroughfare` / `subThoroughfare`), landmark/premise (`featureName`), area/neighborhood (`subLocality`), city (`locality`), and formatted GPS coordinates (`lat, lng`).
+- **Normal Manual Entry Transactions (`VaultCommonComponents.kt` & `FinanceVaultViewModel.kt`)**:
+  - In `RecordTransactionDialog`, automatically fetch the live high-accuracy GPS street, area, and coordinates when opening the dialog (or when pressing the GPS icon or submitting).
+  - If the user enters a custom merchant/place name manually in the Location box (e.g., `"Reliance Fresh"`), combine it with the live GPS street, area, and coordinates (`"Reliance Fresh • <Street, Area> (<lat>, <lng>)"`) on submit; if left blank, automatically populate the full live GPS street, area, and coordinates.
+  - In `FinanceVaultViewModel.recordTransaction`, if a manual transaction is submitted while GPS is still resolving, fetch and attach the live GPS street/area and coordinates before writing to Room.
+- **Voice Transactions (`MainActivity.kt` & `FinanceVaultViewModel.kt`)**:
+  - Request `ACCESS_FINE_LOCATION` / `ACCESS_COARSE_LOCATION` alongside `RECORD_AUDIO` when starting voice commands if not yet granted, and always attach live GPS street, area, and coordinates to every voice-recorded transaction.

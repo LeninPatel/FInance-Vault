@@ -1540,6 +1540,7 @@ fun RecordTransactionDialog(
     var referenceInput by remember { mutableStateOf("") }
     var notesInput by remember { mutableStateOf("") }
     var locationNameInput by remember { mutableStateOf("") }
+    var capturedGps by remember { mutableStateOf<com.example.domain.location.CapturedLocation?>(null) }
     var capturedLat by remember { mutableStateOf<Double?>(null) }
     var capturedLng by remember { mutableStateOf<Double?>(null) }
     var isFetchingGps by remember { mutableStateOf(false) }
@@ -1567,11 +1568,10 @@ fun RecordTransactionDialog(
                 isFetchingGps = true
                 val loc = LocationHelper.fetchCurrentLocation(context)
                 if (loc != null) {
+                    capturedGps = loc
                     capturedLat = loc.latitude
                     capturedLng = loc.longitude
-                    if (locationNameInput.isBlank()) {
-                        locationNameInput = loc.placeName
-                    }
+                    locationNameInput = LocationHelper.mergeLocationWithLiveGps(locationNameInput, loc)
                 }
                 isFetchingGps = false
             }
@@ -1583,11 +1583,10 @@ fun RecordTransactionDialog(
             isFetchingGps = true
             val loc = LocationHelper.fetchCurrentLocation(context)
             if (loc != null) {
+                capturedGps = loc
                 capturedLat = loc.latitude
                 capturedLng = loc.longitude
-                if (locationNameInput.isBlank()) {
-                    locationNameInput = loc.placeName
-                }
+                locationNameInput = LocationHelper.mergeLocationWithLiveGps(locationNameInput, loc)
             }
             isFetchingGps = false
         } else {
@@ -1713,28 +1712,45 @@ fun RecordTransactionDialog(
             return
         }
 
-        onSubmit(
-            chosenType,
-            IndianFinancialYear.todayEpochDay(),
-            amountPaise,
-            principalPaise,
-            interestPaise,
-            chargesPaise,
-            costDisposedPaise,
-            resolvedSourceId,
-            resolvedDestId,
-            resolvedCategory,
-            descriptionInput.ifBlank { resolvedCategory },
-            referenceInput,
-            notesInput,
-            locationNameInput,
-            capturedLat,
-            capturedLng,
-            selectedInvestmentId ?: investments.firstOrNull()?.id,
-            selectedLoanId ?: loans.firstOrNull()?.id,
-            selectedGiftCardId ?: giftCards.firstOrNull()?.id,
-            selectedOrigTxId
-        )
+        scope.launch {
+            val activeGps = capturedGps ?: if (LocationHelper.hasLocationPermission(context)) {
+                isFetchingGps = true
+                val fetched = LocationHelper.fetchCurrentLocation(context)
+                isFetchingGps = false
+                if (fetched != null) {
+                    capturedGps = fetched
+                    capturedLat = fetched.latitude
+                    capturedLng = fetched.longitude
+                }
+                fetched
+            } else {
+                null
+            }
+            val finalLocationText = LocationHelper.mergeLocationWithLiveGps(locationNameInput, activeGps)
+
+            onSubmit(
+                chosenType,
+                IndianFinancialYear.todayEpochDay(),
+                amountPaise,
+                principalPaise,
+                interestPaise,
+                chargesPaise,
+                costDisposedPaise,
+                resolvedSourceId,
+                resolvedDestId,
+                resolvedCategory,
+                descriptionInput.ifBlank { resolvedCategory },
+                referenceInput,
+                notesInput,
+                finalLocationText,
+                activeGps?.latitude ?: capturedLat,
+                activeGps?.longitude ?: capturedLng,
+                selectedInvestmentId ?: investments.firstOrNull()?.id,
+                selectedLoanId ?: loans.firstOrNull()?.id,
+                selectedGiftCardId ?: giftCards.firstOrNull()?.id,
+                selectedOrigTxId
+            )
+        }
     }
 
     AlertDialog(
@@ -2043,9 +2059,10 @@ fun RecordTransactionDialog(
                                         isFetchingGps = true
                                         val loc = LocationHelper.fetchCurrentLocation(context)
                                         if (loc != null) {
+                                            capturedGps = loc
                                             capturedLat = loc.latitude
                                             capturedLng = loc.longitude
-                                            locationNameInput = loc.placeName
+                                            locationNameInput = LocationHelper.mergeLocationWithLiveGps(locationNameInput, loc)
                                         }
                                         isFetchingGps = false
                                     }

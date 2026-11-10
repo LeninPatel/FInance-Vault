@@ -30,7 +30,8 @@ data class ParsedVoiceTransaction(
     val locationName: String = "",
     val sourceAccountHint: String = "",
     val destinationAccountHint: String = "",
-    val spokenConfirmation: String = ""
+    val spokenConfirmation: String = "",
+    val isCategoryExplicit: Boolean = true
 )
 
 @Immutable
@@ -262,9 +263,27 @@ object GeminiVaultAssistant {
                 "TRANSFER" -> TransactionType.TRANSFER
                 else -> TransactionType.EXPENSE
             }
-            val category = json.optString("category", "Other").ifBlank { "Other" }
-            val description = json.optString("description", cleaned).ifBlank { cleaned }
-            val locationName = json.optString("locationName", "")
+            val rawCategory = json.optString("category", "").trim()
+            val explicitCatFromText = inferExplicitCategoryFromEnglish(
+                cleaned.lowercase(Locale.US),
+                txType,
+                uiState.customOptionsMap["TX_CATEGORY"].orEmpty()
+            )
+            val isCatExplicit = explicitCatFromText != null ||
+                (rawCategory.isNotBlank() && !rawCategory.equals("Other", ignoreCase = true) && !rawCategory.equals("General", ignoreCase = true))
+            val category = explicitCatFromText
+                ?: rawCategory.takeIf { it.isNotBlank() && !it.equals("Other", ignoreCase = true) }
+                ?: inferCategoryFromEnglish(cleaned.lowercase(Locale.US), txType, uiState.customOptionsMap["TX_CATEGORY"].orEmpty())
+            val locationName = json.optString("locationName", "").ifBlank { extractLocationOrMerchant(cleaned) }
+            val rawDesc = json.optString("description", "").trim()
+            val description = if (rawDesc.isBlank() ||
+                rawDesc.equals(cleaned, ignoreCase = true) ||
+                rawDesc.startsWith("Voice ", ignoreCase = true)
+            ) {
+                buildCleanNarration(cleaned, category, locationName, txType)
+            } else {
+                rawDesc
+            }
             val srcHint = json.optString("sourceAccountHint", "")
             val dstHint = json.optString("destinationAccountHint", "")
             val navScreen = json.optString("navigationScreen", "NONE")
@@ -278,21 +297,20 @@ object GeminiVaultAssistant {
                 localTx?.spokenConfirmation ?: answerFinancialQueryLocally(cleaned, uiState)
             }
 
-            val parsedTxList = if (action == "RECORD_TRANSACTION" && amountPaise > 0L) {
+            val parsedTxList = if (action == "RECORD_TRANSACTION") {
                 listOf(
                     ParsedVoiceTransaction(
                         transactionType = txType,
-                        amountPaise = amountPaise,
+                        amountPaise = if (amountPaise > 0L) amountPaise else (localTx?.amountPaise ?: 0L),
                         category = category,
                         description = description,
                         locationName = locationName,
-                        sourceAccountHint = srcHint,
-                        destinationAccountHint = dstHint,
-                        spokenConfirmation = reply
+                        sourceAccountHint = srcHint.ifBlank { localTx?.sourceAccountHint.orEmpty() },
+                        destinationAccountHint = dstHint.ifBlank { localTx?.destinationAccountHint.orEmpty() },
+                        spokenConfirmation = reply,
+                        isCategoryExplicit = isCatExplicit
                     )
                 )
-            } else if (action == "RECORD_TRANSACTION" && localTx != null) {
-                listOf(localTx)
             } else {
                 emptyList()
             }
@@ -1019,8 +1037,16 @@ object GeminiVaultAssistant {
             return null
         }
 
-        val amountPaise = extractAmountPaiseFromEnglish(cleaned) ?: return null
-        if (amountPaise <= 0L) return null
+        val extractedAmount = extractAmountPaiseFromEnglish(cleaned)
+        val hasExplicitTxVerb = Regex(
+            """\b(?:spent|paid|bought|purchase|purchased|record\s+(?:an?\s+)?(?:expense|income|transfer|transaction)|add\s+(?:an?\s+)?(?:expense|income|transfer|transaction)|received|earned|credited|got\s+paid|deposited|transfer|transferred)\b""",
+            RegexOption.IGNORE_CASE
+        ).containsMatchIn(lower)
+
+        if ((extractedAmount == null || extractedAmount <= 0L) && !hasExplicitTxVerb) {
+            return null
+        }
+        val amountPaise = extractedAmount?.coerceAtLeast(0L) ?: 0L
 
         val txType = when {
             lower.contains("transfer") || (lower.contains("from ") && lower.contains(" to ") && !lower.contains("spent") && !lower.contains("paid")) ->
@@ -1032,12 +1058,15 @@ object GeminiVaultAssistant {
             else -> TransactionType.EXPENSE
         }
 
-        val category = inferCategoryFromEnglish(lower, txType, uiState.customOptionsMap["TX_CATEGORY"].orEmpty())
+        val customCategories = uiState.customOptionsMap["TX_CATEGORY"].orEmpty()
+        val explicitCategory = inferExplicitCategoryFromEnglish(lower, txType, customCategories)
+        val isCategoryExplicit = explicitCategory != null
+        val category = explicitCategory ?: inferCategoryFromEnglish(lower, txType, customCategories)
         val locationName = extractLocationOrMerchant(cleaned)
         val (srcHint, dstHint) = extractAccountHints(cleaned, txType, uiState)
 
         val cleanDescription = buildCleanNarration(cleaned, category, locationName, txType)
-        val formattedRupees = InrMoney.formatPaise(amountPaise)
+        val formattedRupees = if (amountPaise > 0L) InrMoney.formatPaise(amountPaise) else "the specified amount"
         val typeWord = when (txType) {
             TransactionType.INCOME -> "income"
             TransactionType.TRANSFER -> "transfer"
@@ -1054,7 +1083,8 @@ object GeminiVaultAssistant {
             locationName = locationName,
             sourceAccountHint = srcHint,
             destinationAccountHint = dstHint,
-            spokenConfirmation = spokenConfirmation
+            spokenConfirmation = spokenConfirmation,
+            isCategoryExplicit = isCategoryExplicit
         )
     }
 
@@ -1117,57 +1147,83 @@ object GeminiVaultAssistant {
         return s
     }
 
-    fun inferCategoryFromEnglish(
+    fun inferExplicitCategoryFromEnglish(
         lower: String,
         txType: TransactionType,
         customCategories: List<String>
-    ): String {
+    ): String? {
         for (custom in customCategories) {
             if (custom.isNotBlank() && lower.contains(custom.lowercase(Locale.US))) {
                 return custom
             }
         }
-        if (txType == TransactionType.INCOME) {
-            return when {
-                lower.contains("salary") || lower.contains("paycheck") || lower.contains("stipend") -> "Salary Income"
-                lower.contains("freelance") || lower.contains("client") || lower.contains("business") || lower.contains("consulting") -> "Business & Freelance"
-                lower.contains("rent") -> "Rental Income"
-                else -> "Salary Income"
-            }
-        }
         if (txType == TransactionType.TRANSFER) {
             return "Account Transfer"
         }
+        if (txType == TransactionType.INCOME) {
+            return when {
+                lower.contains("salary") || lower.contains("paycheck") || lower.contains("stipend") || lower.contains("wages") -> "Salary Income"
+                lower.contains("freelance") || lower.contains("client") || lower.contains("business") || lower.contains("consulting") || lower.contains("project") -> "Business & Freelance"
+                lower.contains("rent") || lower.contains("tenant") -> "Rental Income"
+                lower.contains("dividend") -> "Dividend Income"
+                lower.contains("interest") -> "Interest Income"
+                lower.contains("refund") || lower.contains("cashback") -> "Refund & Cashback"
+                else -> null
+            }
+        }
         return when {
-            lower.contains("coffee") || lower.contains("tea") || lower.contains("lunch") ||
-                lower.contains("dinner") || lower.contains("breakfast") || lower.contains("food") ||
-                lower.contains("restaurant") || lower.contains("cafe") || lower.contains("snack") ||
-                lower.contains("swiggy") || lower.contains("zomato") || lower.contains("starbucks") ||
-                lower.contains("pizza") || lower.contains("burger") -> "Food & Dining"
+            lower.contains("coffee") || lower.contains("tea") || lower.contains("chai") ||
+                lower.contains("lunch") || lower.contains("dinner") || lower.contains("breakfast") ||
+                lower.contains("food") || lower.contains("restaurant") || lower.contains("cafe") ||
+                lower.contains("snack") || lower.contains("swiggy") || lower.contains("zomato") ||
+                lower.contains("starbucks") || lower.contains("pizza") || lower.contains("burger") ||
+                lower.contains("dining") || lower.contains("meal") || lower.contains("biryani") ||
+                lower.contains("bakery") -> "Food & Dining"
             lower.contains("grocery") || lower.contains("groceries") || lower.contains("vegetables") ||
-                lower.contains("milk") || lower.contains("supermarket") || lower.contains("dmart") ||
-                lower.contains("blinkit") || lower.contains("zepto") || lower.contains("bigbasket") ||
-                lower.contains("household") -> "Household & Groceries"
+                lower.contains("fruits") || lower.contains("milk") || lower.contains("supermarket") ||
+                lower.contains("dmart") || lower.contains("blinkit") || lower.contains("zepto") ||
+                lower.contains("bigbasket") || lower.contains("instamart") || lower.contains("household") ||
+                lower.contains("kirana") || lower.contains("reliance fresh") -> "Household & Groceries"
             lower.contains("uber") || lower.contains("ola") || lower.contains("rapido") ||
                 lower.contains("petrol") || lower.contains("fuel") || lower.contains("diesel") ||
-                lower.contains("cab") || lower.contains("taxi") || lower.contains("metro") ||
-                lower.contains("train") || lower.contains("flight") || lower.contains("bus") ||
-                lower.contains("transport") -> "Transportation & Fuel"
+                lower.contains("cng") || lower.contains("cab") || lower.contains("taxi") ||
+                lower.contains("auto") || lower.contains("metro") || lower.contains("train") ||
+                lower.contains("flight") || lower.contains("bus") || lower.contains("transport") ||
+                lower.contains("toll") || lower.contains("parking") -> "Transportation & Fuel"
             lower.contains("electricity") || lower.contains("water") || lower.contains("wifi") ||
                 lower.contains("broadband") || lower.contains("internet") || lower.contains("recharge") ||
-                lower.contains("mobile bill") || lower.contains("gas") || lower.contains("utility") -> "Utilities & Recharge"
-            lower.contains("rent") || lower.contains("maintenance") || lower.contains("housing") -> "Housing & Rent"
+                lower.contains("mobile bill") || lower.contains("phone bill") || lower.contains("gas") ||
+                lower.contains("lpg") || lower.contains("cylinder") || lower.contains("utility") ||
+                lower.contains("utilities") || lower.contains("bill") -> "Utilities & Recharge"
+            lower.contains("rent") || lower.contains("maintenance") || lower.contains("housing") ||
+                lower.contains("society") -> "Housing & Rent"
             lower.contains("medicine") || lower.contains("doctor") || lower.contains("hospital") ||
                 lower.contains("pharmacy") || lower.contains("medical") || lower.contains("health") ||
-                lower.contains("apollo") -> "Healthcare & Medical"
+                lower.contains("clinic") || lower.contains("apollo") || lower.contains("lab test") -> "Healthcare & Medical"
             lower.contains("netflix") || lower.contains("spotify") || lower.contains("movie") ||
                 lower.contains("cinema") || lower.contains("subscription") || lower.contains("prime") ||
-                lower.contains("youtube") || lower.contains("entertainment") -> "Entertainment & Subscriptions"
-            lower.contains("book") || lower.contains("course") || lower.contains("tuition") ||
-                lower.contains("school") || lower.contains("college") || lower.contains("education") -> "Education"
+                lower.contains("youtube") || lower.contains("entertainment") || lower.contains("hotstar") ||
+                lower.contains("gaming") -> "Entertainment & Subscriptions"
+            lower.contains("book") || lower.contains("books") || lower.contains("course") ||
+                lower.contains("tuition") || lower.contains("school") || lower.contains("college") ||
+                lower.contains("education") || lower.contains("stationery") -> "Education"
             lower.contains("shopping") || lower.contains("amazon") || lower.contains("flipkart") ||
-                lower.contains("myntra") || lower.contains("clothes") || lower.contains("shoes") ||
-                lower.contains("mall") -> "Shopping & Lifestyle"
+                lower.contains("myntra") || lower.contains("ajio") || lower.contains("clothes") ||
+                lower.contains("shoes") || lower.contains("apparel") || lower.contains("mall") ||
+                lower.contains("electronics") || lower.contains("gift") -> "Shopping & Lifestyle"
+            else -> null
+        }
+    }
+
+    fun inferCategoryFromEnglish(
+        lower: String,
+        txType: TransactionType,
+        customCategories: List<String>
+    ): String {
+        inferExplicitCategoryFromEnglish(lower, txType, customCategories)?.let { return it }
+        return when (txType) {
+            TransactionType.INCOME -> "Salary Income"
+            TransactionType.TRANSFER -> "Account Transfer"
             else -> "Household & Groceries"
         }
     }
@@ -1212,19 +1268,36 @@ object GeminiVaultAssistant {
         return if (txType == TransactionType.INCOME) "" to hint else hint to ""
     }
 
-    private fun buildCleanNarration(
+    /**
+     * Generates a clean, normal transaction description without any "Voice Expense:" prefix
+     * or raw spoken transcript clutter, matching manually entered transactions.
+     */
+    fun buildCleanNarration(
         rawText: String,
         category: String,
         locationName: String,
         txType: TransactionType
     ): String {
-        val prefix = when (txType) {
-            TransactionType.INCOME -> "Voice Income"
-            TransactionType.TRANSFER -> "Voice Transfer"
-            else -> "Voice Expense"
+        val itemPhrase = Regex(
+            """\b(?:on|for|towards)\s+([A-Za-z][A-Za-z0-9 &'-]{1,28}?)(?=\s+\b(?:at|from|using|via|with|in|into|to|by|today|yesterday|for\s+rs|for\s+₹|\d)\b|$)""",
+            RegexOption.IGNORE_CASE
+        ).find(rawText)?.groupValues?.getOrNull(1)?.trim()
+            ?.replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.US) else it.toString() }
+            .orEmpty()
+
+        val baseTitle = when {
+            itemPhrase.isNotBlank() && !itemPhrase.equals("expense", ignoreCase = true) &&
+                !itemPhrase.equals("income", ignoreCase = true) &&
+                !itemPhrase.equals("transaction", ignoreCase = true) -> itemPhrase
+            category.isNotBlank() -> category
+            else -> txType.userLabel
         }
-        val locPart = if (locationName.isNotBlank()) " @ $locationName" else ""
-        return "$prefix: $category$locPart (${rawText.take(60)})"
+
+        return if (locationName.isNotBlank() && !baseTitle.contains(locationName, ignoreCase = true)) {
+            "$baseTitle • $locationName"
+        } else {
+            baseTitle
+        }
     }
 
     fun answerFinancialQueryLocally(query: String, uiState: FinanceVaultUiState): String {

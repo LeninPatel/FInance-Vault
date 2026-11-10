@@ -37,12 +37,14 @@ data class VoiceAssistantUiState(
 }
 
 /**
- * Battery-friendly on-demand Voice Transaction Controller with a 4-second (4,000 ms)
- * pre-speech and post-speech grace timer and instant all-state Mute/Cancel support.
- *
- * - Waits 4 seconds before speech begins and 4 seconds after speech pauses before auto-closing.
- * - Tapping the microphone/mute button while listening, processing, or speaking immediately
- *   stops the microphone, cancels command processing, and mutes any spoken reply.
+ * Battery-friendly on-demand Voice Transaction Controller with:
+ * 1. Strict Word-Only 4-Second Auto-Close Timer (ignores ambient background noise, RMS volume
+ *    fluctuations, and `onBeginningOfSpeech` acoustic triggers — only resets when genuinely
+ *    new spoken words are recognized).
+ * 2. 15-Second Maximum Session Safety Cap so the microphone never stays open indefinitely
+ *    even in noisy environments.
+ * 3. Instant All-State Mute/Cancel when tapping the microphone button while listening,
+ *    processing, or speaking.
  */
 class VoiceTransactionController(
     private val context: Context,
@@ -51,7 +53,37 @@ class VoiceTransactionController(
 ) {
     companion object {
         const val SILENCE_AUTO_CLOSE_DELAY_MS = 4000L
+        const val MAX_SESSION_DURATION_MS = 15000L
         private const val WATCHDOG_TICK_MS = 200L
+        private const val MIN_VALID_CONFIDENCE = 0.25f
+
+        private val NOISE_FILLER_TOKENS = setOf(
+            "uh", "um", "umm", "uhh", "ah", "ahh", "eh", "oh", "hmm", "hm", "mm", "er", "huh"
+        )
+
+        /**
+         * Extracts meaningful spoken English words/numbers and strips out punctuation,
+         * ambient noise filler sounds ("uh", "um", "hmm"), and single-letter non-digit artifacts.
+         */
+        fun normalizeMeaningfulWords(raw: String): String {
+            if (raw.isBlank()) return ""
+            return raw
+                .lowercase(Locale.US)
+                .split(Regex("""[^a-z0-9₹]+"""))
+                .map { it.trim() }
+                .filter { token ->
+                    if (token.isEmpty() || token in NOISE_FILLER_TOKENS) {
+                        false
+                    } else if (token.length == 1) {
+                        // Keep single digits (e.g. option "1", "2", "3") but ignore single-letter noise artifacts
+                        token[0].isDigit()
+                    } else {
+                        true
+                    }
+                }
+                .joinToString(" ")
+                .trim()
+        }
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -67,11 +99,11 @@ class VoiceTransactionController(
     private var pendingFollowUpListen = false
     private var isDestroyed = false
 
-    // 4-Second Pre-Speech & Post-Speech Grace Window State
+    // 4-Second Word-Only Grace Window & 15-Second Max Session State
     private var isSessionOpen = false
     private var sessionStartRealtimeMs = 0L
-    private var lastSpeechActivityRealtimeMs = 0L
-    private var hasDetectedSpeechInSession = false
+    private var lastWordRecognizedRealtimeMs = 0L
+    private var lastRecognizedNormalizedWords = ""
     private val accumulatedSegments = mutableListOf<String>()
     private var currentLivePartial = ""
     private var isRestartingRecognizerInternal = false
@@ -80,16 +112,20 @@ class VoiceTransactionController(
         override fun run() {
             if (!isSessionOpen || isDestroyed) return
             val now = SystemClock.elapsedRealtime()
-            val elapsedSinceLastActivity = now - lastSpeechActivityRealtimeMs
-            val remainingMs = (SILENCE_AUTO_CLOSE_DELAY_MS - elapsedSinceLastActivity).coerceAtLeast(0L)
-            val remainingSecs = ceil(remainingMs / 1000.0).toInt().coerceIn(0, 4)
+            val elapsedSinceLastWord = now - lastWordRecognizedRealtimeMs
+            val totalSessionElapsed = now - sessionStartRealtimeMs
+
+            val remainingSilenceMs = (SILENCE_AUTO_CLOSE_DELAY_MS - elapsedSinceLastWord).coerceAtLeast(0L)
+            val remainingCapMs = (MAX_SESSION_DURATION_MS - totalSessionElapsed).coerceAtLeast(0L)
+            val effectiveRemainingMs = minOf(remainingSilenceMs, remainingCapMs)
+            val remainingSecs = ceil(effectiveRemainingMs / 1000.0).toInt().coerceIn(0, 4)
 
             if (_state.value.remainingSilenceSeconds != remainingSecs) {
                 _state.value = _state.value.copy(remainingSilenceSeconds = remainingSecs)
             }
 
-            if (elapsedSinceLastActivity >= SILENCE_AUTO_CLOSE_DELAY_MS) {
-                // 4 seconds of silence elapsed -> auto-close microphone and commit any spoken transcript
+            if (elapsedSinceLastWord >= SILENCE_AUTO_CLOSE_DELAY_MS || totalSessionElapsed >= MAX_SESSION_DURATION_MS) {
+                // 4 seconds without any new recognized words (or 15s max session cap reached) -> auto-close microphone
                 finalizeAndAutoCloseSession()
             } else {
                 mainHandler.postDelayed(this, WATCHDOG_TICK_MS)
@@ -176,7 +212,8 @@ class VoiceTransactionController(
     }
 
     /**
-     * Starts a 4-second grace-window voice recognition session when the user presses the Microphone button.
+     * Starts a 4-second word-only grace-window voice recognition session (with 15s max session cap)
+     * when the user presses the Microphone button.
      */
     fun startListeningSession() {
         mainHandler.post {
@@ -210,8 +247,8 @@ class VoiceTransactionController(
             val now = SystemClock.elapsedRealtime()
             isSessionOpen = true
             sessionStartRealtimeMs = now
-            lastSpeechActivityRealtimeMs = now
-            hasDetectedSpeechInSession = false
+            lastWordRecognizedRealtimeMs = now
+            lastRecognizedNormalizedWords = ""
             accumulatedSegments.clear()
             currentLivePartial = ""
 
@@ -247,7 +284,6 @@ class VoiceTransactionController(
                 putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, "en-US")
                 putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                 putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-                // Configure 4-second (4,000 ms) pre-speech and post-speech silence thresholds
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, SILENCE_AUTO_CLOSE_DELAY_MS)
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, SILENCE_AUTO_CLOSE_DELAY_MS)
                 putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, SILENCE_AUTO_CLOSE_DELAY_MS)
@@ -281,8 +317,24 @@ class VoiceTransactionController(
     }
 
     /**
-     * Called automatically when the 4-second silence timer expires.
-     * Closes the microphone and processes the captured command if speech was heard.
+     * Checks whether the newly recognized transcript contains genuinely new spoken words
+     * compared to what was already recognized in this session.
+     * Only resets the 4-second timer when this returns true.
+     */
+    private fun checkAndRecordNewSpokenWords(candidateTranscript: String): Boolean {
+        val normalized = normalizeMeaningfulWords(candidateTranscript)
+        if (normalized.isBlank()) return false
+        if (normalized == lastRecognizedNormalizedWords) return false
+
+        lastRecognizedNormalizedWords = normalized
+        lastWordRecognizedRealtimeMs = SystemClock.elapsedRealtime()
+        return true
+    }
+
+    /**
+     * Called automatically when 4 seconds pass without any new recognized words
+     * (or when the 15-second max session cap is reached).
+     * Immediately closes the microphone and processes the captured command if valid words were heard.
      */
     private fun finalizeAndAutoCloseSession() {
         mainHandler.removeCallbacks(silenceWatchdogRunnable)
@@ -290,10 +342,12 @@ class VoiceTransactionController(
         releaseSpeechRecognizer()
 
         val fullTranscript = buildCombinedTranscript()
+        val meaningfulWords = normalizeMeaningfulWords(fullTranscript)
         accumulatedSegments.clear()
         currentLivePartial = ""
+        lastRecognizedNormalizedWords = ""
 
-        if (fullTranscript.isNotBlank()) {
+        if (meaningfulWords.isNotBlank()) {
             markProcessingStarted(fullTranscript)
             onUtteranceCaptured(fullTranscript)
         } else {
@@ -316,6 +370,7 @@ class VoiceTransactionController(
             isSessionOpen = false
             pendingFollowUpListen = false
             pendingSpeechText = null
+            lastRecognizedNormalizedWords = ""
             accumulatedSegments.clear()
             currentLivePartial = ""
             releaseSpeechRecognizer()
@@ -399,6 +454,14 @@ class VoiceTransactionController(
         }
     }
 
+    private fun isStillWithinSessionWindow(): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        val elapsedSinceLastWord = now - lastWordRecognizedRealtimeMs
+        val totalSessionElapsed = now - sessionStartRealtimeMs
+        return elapsedSinceLastWord < (SILENCE_AUTO_CLOSE_DELAY_MS - 350L) &&
+            totalSessionElapsed < (MAX_SESSION_DURATION_MS - 350L)
+    }
+
     private fun createRecognitionListener(): RecognitionListener {
         return object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {
@@ -407,28 +470,19 @@ class VoiceTransactionController(
             }
 
             override fun onBeginningOfSpeech() {
-                if (!isSessionOpen) return
-                hasDetectedSpeechInSession = true
-                lastSpeechActivityRealtimeMs = SystemClock.elapsedRealtime()
-                _state.value = _state.value.copy(
-                    isActivelyListening = true,
-                    remainingSilenceSeconds = 4
-                )
+                // Intentionally do NOT reset the 4-second timer here:
+                // Android triggers onBeginningOfSpeech on any ambient background noise (fan, AC, traffic).
+                // The timer is strictly reset only when actual spoken words are recognized.
             }
 
             override fun onRmsChanged(rmsdB: Float) {
-                if (!isSessionOpen) return
-                // If user is actively speaking loudly enough, refresh the 4-second post-speech timer
-                if (hasDetectedSpeechInSession && rmsdB > 3.5f) {
-                    lastSpeechActivityRealtimeMs = SystemClock.elapsedRealtime()
-                }
+                // Intentionally do NOT reset the 4-second timer on acoustic volume changes:
+                // Background noise fluctuates RMS levels continuously without spoken words.
             }
 
             override fun onBufferReceived(buffer: ByteArray?) {}
 
-            override fun onEndOfSpeech() {
-                // Do not immediately close onEndOfSpeech; let onResults + 4-second grace timer handle auto-close
-            }
+            override fun onEndOfSpeech() {}
 
             override fun onError(error: Int) {
                 if (!isSessionOpen || isRestartingRecognizerInternal) return
@@ -445,16 +499,15 @@ class VoiceTransactionController(
                     return
                 }
 
-                val now = SystemClock.elapsedRealtime()
-                val elapsedSinceLastActivity = now - lastSpeechActivityRealtimeMs
-
-                // If the OS recognizer timed out early (< 4 seconds of silence), keep listening until the 4-second window expires!
-                if (elapsedSinceLastActivity < SILENCE_AUTO_CLOSE_DELAY_MS - 300L) {
+                // Only continue listening if we are still within the 4-second no-new-words window and 15s max session cap
+                if (isStillWithinSessionWindow()) {
                     mainHandler.postDelayed({
-                        if (isSessionOpen && !isDestroyed) {
+                        if (isSessionOpen && !isDestroyed && isStillWithinSessionWindow()) {
                             startUnderlyingRecognizerInternal()
+                        } else if (isSessionOpen && !isDestroyed) {
+                            finalizeAndAutoCloseSession()
                         }
-                    }, 120L)
+                    }, 150L)
                 } else {
                     finalizeAndAutoCloseSession()
                 }
@@ -463,35 +516,39 @@ class VoiceTransactionController(
             override fun onResults(results: Bundle?) {
                 if (!isSessionOpen) return
                 val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                val topTranscript = matches?.firstOrNull()?.trim().orEmpty()
-                if (topTranscript.isNotBlank()) {
-                    hasDetectedSpeechInSession = true
-                    lastSpeechActivityRealtimeMs = SystemClock.elapsedRealtime()
-                    accumulatedSegments.add(topTranscript)
+                val confidenceScores = results?.getFloatArray(SpeechRecognizer.CONFIDENCE_SCORES)
+                val topConfidence = confidenceScores?.firstOrNull() ?: 1.0f
+                val rawTop = matches?.firstOrNull()?.trim().orEmpty()
+                val meaningfulSegment = normalizeMeaningfulWords(rawTop)
+
+                val isConfidentEnough = topConfidence <= 0f || topConfidence >= MIN_VALID_CONFIDENCE
+
+                if (meaningfulSegment.isNotBlank() && isConfidentEnough) {
                     currentLivePartial = ""
+                    if (accumulatedSegments.isEmpty() ||
+                        normalizeMeaningfulWords(accumulatedSegments.last()) != meaningfulSegment
+                    ) {
+                        accumulatedSegments.add(rawTop)
+                    }
                     val combined = buildCombinedTranscript()
+                    val addedNewWords = checkAndRecordNewSpokenWords(combined)
                     _state.value = _state.value.copy(
                         isActivelyListening = true,
-                        remainingSilenceSeconds = 4,
+                        remainingSilenceSeconds = if (addedNewWords) 4 else _state.value.remainingSilenceSeconds,
                         partialTranscript = combined
                     )
-                    // Keep microphone alive during the 4-second post-speech grace window in case the user adds more words
+                }
+
+                if (isStillWithinSessionWindow()) {
                     mainHandler.postDelayed({
-                        if (isSessionOpen && !isDestroyed) {
+                        if (isSessionOpen && !isDestroyed && isStillWithinSessionWindow()) {
                             startUnderlyingRecognizerInternal()
+                        } else if (isSessionOpen && !isDestroyed) {
+                            finalizeAndAutoCloseSession()
                         }
-                    }, 120L)
+                    }, 150L)
                 } else {
-                    val now = SystemClock.elapsedRealtime()
-                    if (now - lastSpeechActivityRealtimeMs < SILENCE_AUTO_CLOSE_DELAY_MS - 300L) {
-                        mainHandler.postDelayed({
-                            if (isSessionOpen && !isDestroyed) {
-                                startUnderlyingRecognizerInternal()
-                            }
-                        }, 120L)
-                    } else {
-                        finalizeAndAutoCloseSession()
-                    }
+                    finalizeAndAutoCloseSession()
                 }
             }
 
@@ -502,14 +559,16 @@ class VoiceTransactionController(
                     ?.firstOrNull()
                     ?.trim()
                     .orEmpty()
-                if (partial.isNotBlank()) {
-                    hasDetectedSpeechInSession = true
-                    lastSpeechActivityRealtimeMs = SystemClock.elapsedRealtime()
+
+                val meaningfulPartial = normalizeMeaningfulWords(partial)
+                if (meaningfulPartial.isNotBlank()) {
                     currentLivePartial = partial
                     val combined = buildCombinedTranscript()
+                    // Only reset the 4-second countdown if genuinely new words were recognized
+                    val addedNewWords = checkAndRecordNewSpokenWords(combined)
                     _state.value = _state.value.copy(
                         isActivelyListening = true,
-                        remainingSilenceSeconds = 4,
+                        remainingSilenceSeconds = if (addedNewWords) 4 else _state.value.remainingSilenceSeconds,
                         partialTranscript = combined
                     )
                 }

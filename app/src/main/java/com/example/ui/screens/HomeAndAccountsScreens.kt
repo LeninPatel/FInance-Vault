@@ -622,8 +622,19 @@ fun DashboardScreen(
             }
         }
 
-        // Quick Access to Indian Financial Statements (Balance Sheet, P&L, Trial Balance, Ledgers)
+        // Quick Access to Statements (Current Balance & Financial Report Status)
         item {
+            val currentBalanceText = if (!hasRecords) {
+                "₹0.00"
+            } else {
+                InrMoney.formatPaise(bs.totalNetWorthPaise, isHidden = isHidden)
+            }
+            val currentReportSummary = if (!hasRecords) {
+                "Balance Sheet • P&L • Trial Balance"
+            } else {
+                val pnlSign = if (uiState.fyProfitAndLoss.surplusOrDeficitPaise >= 0L) "+" else ""
+                "Net P&L (${uiState.settings.activeFinancialYear}): $pnlSign${InrMoney.formatPaise(uiState.fyProfitAndLoss.surplusOrDeficitPaise, isHidden = isHidden)}"
+            }
             VaultGlassCard(
                 accentColor = VaultCyan,
                 onClick = { onNavigateMore(MoreDestination.REPORTS) }
@@ -649,18 +660,32 @@ fun DashboardScreen(
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text(
-                                text = "Indian Financial Statements & Ledgers",
-                                style = MaterialTheme.typography.titleMedium,
+                                text = "Statements",
+                                style = MaterialTheme.typography.titleSmall.copy(
+                                    fontWeight = FontWeight.SemiBold
+                                ),
                                 color = VaultTextPrimary
+                            )
+                            Text(
+                                text = currentReportSummary,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = VaultTextSecondary
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (bs.isReconciled && uiState.trialBalance.isAgreed) "BALANCED" else "VIEW",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = VaultEmerald
-                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(horizontalAlignment = Alignment.End) {
+                        Text(
+                            text = "Balance: $currentBalanceText",
+                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                            color = VaultEmerald
+                        )
+                        Text(
+                            text = if (bs.isReconciled && uiState.trialBalance.isAgreed) "Balanced Report" else "Current Report",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = VaultCyan
+                        )
+                    }
                 }
             }
         }

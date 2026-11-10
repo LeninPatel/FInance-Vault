@@ -208,7 +208,8 @@ class FinanceVaultViewModel(
         val title: String,
         val questionPrompt: String,
         val options: List<VoiceDisambiguationOption>,
-        val onSelectOption: suspend (VoiceDisambiguationOption) -> String
+        val onSelectOption: suspend (VoiceDisambiguationOption) -> String,
+        val onSpokenAmountProvided: (suspend (Long) -> String)? = null
     )
 
     private sealed interface UndoableVoiceAction {
@@ -1104,7 +1105,8 @@ class FinanceVaultViewModel(
                 pending.onSelectOption(option)
             }.onSuccess { reply ->
                 _statusBannerMessage.value = reply
-                onFinished(reply, null, false)
+                val hasNextQuestion = _pendingVoiceDisambiguation.value != null
+                onFinished(reply, null, hasNextQuestion)
             }.onFailure { e ->
                 val err = "Could not complete selected option: ${e.message}"
                 _statusBannerMessage.value = err
@@ -1173,6 +1175,336 @@ class FinanceVaultViewModel(
     }
 
     /**
+     * Evaluates a parsed voice transaction and sequentially prompts the user for any missing
+     * required slot (1. Amount, 2. Category, 3. Account when multiple options exist) before
+     * committing the transaction with live high-precision GPS street, area, and coordinates.
+     *
+     * @return Pair(spokenReply, needsFollowUpMicrophone)
+     */
+    private suspend fun processVoiceTransactionWithSlotFilling(
+        context: Context,
+        utterance: String,
+        tx: com.example.domain.ai.ParsedVoiceTransaction,
+        capturedGps: com.example.domain.location.CapturedLocation?,
+        isDemo: Boolean
+    ): Pair<String, Boolean> {
+        val currentState = uiState.value
+        val activeAccounts = currentState.accountsWithBalances
+            .map { it.account }
+            .filter { !it.isArchived }
+
+        val pattern = TransactionPatternAnalyzer.analyzeForTransaction(
+            utterance = utterance,
+            fallbackType = tx.transactionType,
+            fallbackCategory = tx.category,
+            explicitLocationName = tx.locationName,
+            explicitSourceAccountHint = tx.sourceAccountHint,
+            explicitDestinationAccountHint = tx.destinationAccountHint,
+            transactions = currentState.transactions,
+            activeAccounts = activeAccounts
+        )
+
+        val resolvedType = pattern.inferredTransactionType
+        val isCategoryFulfilled = tx.isCategoryExplicit ||
+            pattern.isCategoryAutoSelectedFromHistory ||
+            resolvedType == TransactionType.TRANSFER
+        val resolvedCategory = pattern.inferredCategory
+        val merchantOrPlace = tx.locationName.ifBlank { pattern.inferredLocationName }
+        val resolvedLocation = LocationHelper.mergeLocationWithLiveGps(merchantOrPlace, capturedGps)
+
+        // Clean description without any voice transcript clutter
+        val cleanDescription = if (tx.description.isBlank() || tx.description.startsWith("Voice ", ignoreCase = true)) {
+            GeminiVaultAssistant.buildCleanNarration(utterance, resolvedCategory, merchantOrPlace, resolvedType)
+        } else {
+            tx.description
+        }
+
+        // SLOT 1: Missing Amount -> Ask the user how much the transaction was for!
+        if (tx.amountPaise <= 0L) {
+            val quickAmounts = listOf(100_00L, 250_00L, 500_00L, 1_000_00L, 2_500_00L)
+            val options = quickAmounts.mapIndexed { idx, paise ->
+                VoiceDisambiguationOption(
+                    index = idx + 1,
+                    label = InrMoney.formatPaise(paise),
+                    subtitle = "Quick amount option",
+                    entityId = paise
+                )
+            }
+            val typeWord = when (resolvedType) {
+                TransactionType.INCOME -> "income"
+                TransactionType.TRANSFER -> "transfer"
+                else -> "expense"
+            }
+            val catHint = if (isCategoryFulfilled) " for $resolvedCategory" else ""
+            val question = "How much was this $typeWord$catHint? Please say the amount in rupees or pick an option."
+
+            _pendingVoiceDisambiguation.value = PendingVoiceDisambiguation(
+                title = "Enter Amount for ${resolvedType.userLabel}",
+                questionPrompt = question,
+                options = options,
+                onSelectOption = { chosen ->
+                    val updatedTx = tx.copy(amountPaise = chosen.entityId)
+                    processVoiceTransactionWithSlotFilling(
+                        context = context,
+                        utterance = utterance,
+                        tx = updatedTx,
+                        capturedGps = capturedGps,
+                        isDemo = isDemo
+                    ).first
+                },
+                onSpokenAmountProvided = { spokenPaise ->
+                    val updatedTx = tx.copy(amountPaise = spokenPaise)
+                    processVoiceTransactionWithSlotFilling(
+                        context = context,
+                        utterance = utterance,
+                        tx = updatedTx,
+                        capturedGps = capturedGps,
+                        isDemo = isDemo
+                    ).first
+                }
+            )
+            return question to true
+        }
+
+        // SLOT 2: Missing / Unfulfilled Category -> Ask the user which category to use!
+        if (!isCategoryFulfilled) {
+            val customCats = currentState.customOptionsMap["TX_CATEGORY"].orEmpty()
+            val candidateCategories = if (resolvedType == TransactionType.INCOME) {
+                (listOf("Salary Income", "Business & Freelance", "Rental Income", "Interest Income", "Refund & Cashback") + customCats).distinct().take(6)
+            } else {
+                (listOf(
+                    "Food & Dining",
+                    "Household & Groceries",
+                    "Transportation & Fuel",
+                    "Utilities & Recharge",
+                    "Shopping & Lifestyle",
+                    "Healthcare & Medical"
+                ) + customCats).distinct().take(6)
+            }
+            val options = candidateCategories.mapIndexed { idx, cat ->
+                VoiceDisambiguationOption(
+                    index = idx + 1,
+                    label = cat,
+                    subtitle = "${resolvedType.userLabel} Category",
+                    entityId = (idx + 1).toLong()
+                )
+            }
+            val amtFormatted = InrMoney.formatPaise(tx.amountPaise)
+            val optionsSpoken = options.take(5).joinToString(", or ") { "${it.index}. ${it.label}" }
+            val question = "Which category should I use for $amtFormatted: $optionsSpoken?"
+
+            _pendingVoiceDisambiguation.value = PendingVoiceDisambiguation(
+                title = "Select Category for $amtFormatted",
+                questionPrompt = question,
+                options = options,
+                onSelectOption = { chosen ->
+                    val chosenCat = chosen.label
+                    val updatedDescription = GeminiVaultAssistant.buildCleanNarration(
+                        utterance,
+                        chosenCat,
+                        merchantOrPlace,
+                        resolvedType
+                    )
+                    val updatedTx = tx.copy(
+                        category = chosenCat,
+                        description = updatedDescription,
+                        isCategoryExplicit = true
+                    )
+                    processVoiceTransactionWithSlotFilling(
+                        context = context,
+                        utterance = utterance,
+                        tx = updatedTx,
+                        capturedGps = capturedGps,
+                        isDemo = isDemo
+                    ).first
+                }
+            )
+            return question to true
+        }
+
+        // SLOT 3: Multiple Account Options with no single learned/explicit account -> Ask which account to use!
+        if (pattern.requiresAccountDisambiguation && pattern.candidateAccounts.size >= 2) {
+            val options = pattern.candidateAccounts.take(5).mapIndexed { idx, acc ->
+                val bal = currentState.accountsWithBalances.firstOrNull { it.account.id == acc.id }?.closingBalancePaise ?: 0L
+                VoiceDisambiguationOption(
+                    index = idx + 1,
+                    label = acc.name,
+                    subtitle = "${acc.accountType.displayName} • ${InrMoney.formatPaise(bal)}",
+                    entityId = acc.id
+                )
+            }
+            val optionsSpokenList = options.joinToString(", or ") { "${it.index}. ${it.label}" }
+            val amtFormatted = InrMoney.formatPaise(tx.amountPaise)
+            val question = "Which account should I use for $amtFormatted ($resolvedCategory): $optionsSpokenList?"
+
+            _pendingVoiceDisambiguation.value = PendingVoiceDisambiguation(
+                title = "Select Account for $amtFormatted ($resolvedCategory)",
+                questionPrompt = question,
+                options = options,
+                onSelectOption = { chosen ->
+                    val liveGpsNow = capturedGps ?: withTimeoutOrNull(2_500L) {
+                        LocationHelper.fetchCurrentLocation(context)
+                    }
+                    val finalLocation = LocationHelper.mergeLocationWithLiveGps(merchantOrPlace, liveGpsNow)
+                    val txId = if (resolvedType == TransactionType.INCOME) {
+                        repository.recordTransaction(
+                            transactionType = TransactionType.INCOME,
+                            dateEpochDay = IndianFinancialYear.todayEpochDay(),
+                            amountPaise = tx.amountPaise,
+                            destinationAccountId = chosen.entityId,
+                            category = resolvedCategory,
+                            description = cleanDescription,
+                            locationName = finalLocation,
+                            latitude = liveGpsNow?.latitude,
+                            longitude = liveGpsNow?.longitude,
+                            isDemo = isDemo
+                        )
+                    } else {
+                        repository.recordTransaction(
+                            transactionType = TransactionType.EXPENSE,
+                            dateEpochDay = IndianFinancialYear.todayEpochDay(),
+                            amountPaise = tx.amountPaise,
+                            sourceAccountId = chosen.entityId,
+                            category = resolvedCategory,
+                            description = cleanDescription,
+                            locationName = finalLocation,
+                            latitude = liveGpsNow?.latitude,
+                            longitude = liveGpsNow?.longitude,
+                            isDemo = isDemo
+                        )
+                    }
+                    lastUndoableVoiceAction = UndoableVoiceAction.CreatedTransaction(
+                        transactionId = txId,
+                        description = "$amtFormatted in $resolvedCategory"
+                    )
+                    TransactionRecallReminderManager.dismissInAppRecallPrompt(context)
+                    val gpsNote = if (!liveGpsNow?.streetAndArea.isNullOrBlank()) " at ${liveGpsNow?.streetAndArea}" else ""
+                    "Recorded ${if (resolvedType == TransactionType.INCOME) "income" else "expense"} of $amtFormatted for $resolvedCategory using ${chosen.label}$gpsNote."
+                }
+            )
+            return question to true
+        }
+
+        // ALL SLOTS FULFILLED: Record transaction immediately with live high-accuracy GPS!
+        val liveGpsNow = capturedGps ?: withTimeoutOrNull(2_500L) {
+            LocationHelper.fetchCurrentLocation(context)
+        }
+        val finalLocation = LocationHelper.mergeLocationWithLiveGps(merchantOrPlace, liveGpsNow)
+
+        val confirmation = runCatching {
+            when (resolvedType) {
+                TransactionType.INCOME -> {
+                    val dstAcc = pattern.preferredDestinationAccount
+                        ?: repository.resolveOrCreateAccountForVoice(
+                            spokenAccountHint = tx.destinationAccountHint.ifBlank { tx.sourceAccountHint },
+                            isDemo = isDemo
+                        )
+                    val txId = repository.recordTransaction(
+                        transactionType = TransactionType.INCOME,
+                        dateEpochDay = IndianFinancialYear.todayEpochDay(),
+                        amountPaise = tx.amountPaise,
+                        destinationAccountId = dstAcc.id,
+                        category = resolvedCategory,
+                        description = cleanDescription,
+                        locationName = finalLocation,
+                        latitude = liveGpsNow?.latitude,
+                        longitude = liveGpsNow?.longitude,
+                        isDemo = isDemo
+                    )
+                    lastUndoableVoiceAction = UndoableVoiceAction.CreatedTransaction(
+                        transactionId = txId,
+                        description = "${InrMoney.formatPaise(tx.amountPaise)} income in $resolvedCategory"
+                    )
+                    TransactionRecallReminderManager.dismissInAppRecallPrompt(context)
+                    val autoNote = if (pattern.isAccountAutoSelectedFromHistory) {
+                        " into ${dstAcc.name} (auto-selected from your past transactions)"
+                    } else " into ${dstAcc.name}"
+                    "Recorded income of ${InrMoney.formatPaise(tx.amountPaise)} for $resolvedCategory$autoNote."
+                }
+
+                TransactionType.TRANSFER -> {
+                    val srcAcc = pattern.preferredSourceAccount
+                        ?: repository.resolveOrCreateAccountForVoice(
+                            spokenAccountHint = tx.sourceAccountHint,
+                            isDemo = isDemo
+                        )
+                    val dstAcc = pattern.preferredDestinationAccount
+                        ?: repository.resolveOrCreateAccountForVoice(
+                            spokenAccountHint = tx.destinationAccountHint.ifBlank { "Cash Wallet" },
+                            isDemo = isDemo
+                        )
+                    val finalDstId = if (dstAcc.id == srcAcc.id) {
+                        repository.createAccount(
+                            name = tx.destinationAccountHint.ifBlank { "Secondary Account" },
+                            accountType = AccountType.CASH,
+                            openingBalancePaise = 0L,
+                            isOpeningBalanceRecorded = false,
+                            openingDateEpochDay = IndianFinancialYear.todayEpochDay(),
+                            isDemo = isDemo
+                        )
+                    } else {
+                        dstAcc.id
+                    }
+                    val txId = repository.recordTransaction(
+                        transactionType = TransactionType.TRANSFER,
+                        dateEpochDay = IndianFinancialYear.todayEpochDay(),
+                        amountPaise = tx.amountPaise,
+                        sourceAccountId = srcAcc.id,
+                        destinationAccountId = finalDstId,
+                        category = "Account Transfer",
+                        description = cleanDescription,
+                        locationName = finalLocation,
+                        latitude = liveGpsNow?.latitude,
+                        longitude = liveGpsNow?.longitude,
+                        isDemo = isDemo
+                    )
+                    lastUndoableVoiceAction = UndoableVoiceAction.CreatedTransaction(
+                        transactionId = txId,
+                        description = "${InrMoney.formatPaise(tx.amountPaise)} transfer"
+                    )
+                    TransactionRecallReminderManager.dismissInAppRecallPrompt(context)
+                    "Recorded transfer of ${InrMoney.formatPaise(tx.amountPaise)} from ${srcAcc.name}."
+                }
+
+                else -> {
+                    val srcAcc = pattern.preferredSourceAccount
+                        ?: repository.resolveOrCreateAccountForVoice(
+                            spokenAccountHint = tx.sourceAccountHint,
+                            isDemo = isDemo
+                        )
+                    val txId = repository.recordTransaction(
+                        transactionType = TransactionType.EXPENSE,
+                        dateEpochDay = IndianFinancialYear.todayEpochDay(),
+                        amountPaise = tx.amountPaise,
+                        sourceAccountId = srcAcc.id,
+                        category = resolvedCategory,
+                        description = cleanDescription,
+                        locationName = finalLocation,
+                        latitude = liveGpsNow?.latitude,
+                        longitude = liveGpsNow?.longitude,
+                        isDemo = isDemo
+                    )
+                    lastUndoableVoiceAction = UndoableVoiceAction.CreatedTransaction(
+                        transactionId = txId,
+                        description = "${InrMoney.formatPaise(tx.amountPaise)} expense in $resolvedCategory"
+                    )
+                    TransactionRecallReminderManager.dismissInAppRecallPrompt(context)
+                    val placeSpoken = liveGpsNow?.streetAndArea?.takeIf { it.isNotBlank() } ?: merchantOrPlace
+                    val placePart = if (placeSpoken.isNotBlank()) " at $placeSpoken" else ""
+                    val autoNote = if (pattern.isAccountAutoSelectedFromHistory) {
+                        " from ${srcAcc.name} (auto-selected from your past transactions)"
+                    } else " from ${srcAcc.name}"
+                    "Recorded expense of ${InrMoney.formatPaise(tx.amountPaise)} for $resolvedCategory$placePart$autoNote."
+                }
+            }
+        }.getOrElse { e ->
+            "Could not record transaction: ${e.message}"
+        }
+
+        return confirmation to false
+    }
+
+    /**
      * Full-App Omni-Voice & Google Assistant Command Executor.
      * Supports:
      * 1. Resolving pending multi-option disambiguation questions by voice.
@@ -1193,7 +1525,7 @@ class FinanceVaultViewModel(
                 val trimmedUtterance = utterance.trim()
                 val lowerUtterance = trimmedUtterance.lowercase(java.util.Locale.US)
 
-                // STEP 1: Check if we are waiting for the user to answer a Multi-Option Disambiguation question!
+                // STEP 1: Check if we are waiting for the user to answer a Multi-Option or Missing-Slot question!
                 val activeDisambiguation = _pendingVoiceDisambiguation.value
                 if (activeDisambiguation != null) {
                     if (lowerUtterance == "cancel" || lowerUtterance == "never mind" || lowerUtterance == "stop") {
@@ -1203,6 +1535,22 @@ class FinanceVaultViewModel(
                         onFinished(cancelMsg, null, false)
                         return@launch
                     }
+
+                    // If we are waiting for a missing amount and the user spoke any rupee amount, fulfill it directly!
+                    val spokenAmtPaise = GeminiVaultAssistant.extractAmountPaiseFromEnglish(trimmedUtterance)
+                    if (activeDisambiguation.onSpokenAmountProvided != null && spokenAmtPaise != null && spokenAmtPaise > 0L) {
+                        _pendingVoiceDisambiguation.value = null
+                        val reply = runCatching {
+                            activeDisambiguation.onSpokenAmountProvided.invoke(spokenAmtPaise)
+                        }.getOrElse { e ->
+                            "Could not record amount: ${e.message}"
+                        }
+                        _statusBannerMessage.value = reply
+                        val hasNextFollowUp = _pendingVoiceDisambiguation.value != null
+                        onFinished(reply, null, hasNextFollowUp)
+                        return@launch
+                    }
+
                     val matchedOption = matchDisambiguationOptionFromSpeech(trimmedUtterance, activeDisambiguation.options)
                     if (matchedOption != null) {
                         _pendingVoiceDisambiguation.value = null
@@ -1212,16 +1560,22 @@ class FinanceVaultViewModel(
                             "Could not complete option: ${e.message}"
                         }
                         _statusBannerMessage.value = reply
-                        onFinished(reply, null, false)
+                        val hasNextFollowUp = _pendingVoiceDisambiguation.value != null
+                        onFinished(reply, null, hasNextFollowUp)
                         return@launch
                     } else {
                         val wordsCount = trimmedUtterance.split(Regex("\\s+")).size
-                        if (wordsCount <= 3 && GeminiVaultAssistant.extractAmountPaiseFromEnglish(trimmedUtterance) == null &&
+                        if (wordsCount <= 4 && spokenAmtPaise == null &&
                             !Regex("""\b(?:delete|remove|open|show|go|create|add|undo)\b""", RegexOption.IGNORE_CASE).containsMatchIn(lowerUtterance)
                         ) {
-                            val retryPrompt = "Please choose one of the options: " +
-                                activeDisambiguation.options.joinToString(", ") { "${it.index}. ${it.label}" } +
-                                ", or say Cancel."
+                            val retryPrompt = if (activeDisambiguation.onSpokenAmountProvided != null) {
+                                "Please say the amount in rupees, or pick one of the options: " +
+                                    activeDisambiguation.options.joinToString(", ") { it.label } + "."
+                            } else {
+                                "Please choose one of the options: " +
+                                    activeDisambiguation.options.joinToString(", ") { "${it.index}. ${it.label}" } +
+                                    ", or say Cancel."
+                            }
                             _statusBannerMessage.value = retryPrompt
                             onFinished(retryPrompt, null, true)
                             return@launch
@@ -1250,207 +1604,27 @@ class FinanceVaultViewModel(
 
                 var finalSpokenReply = result.spokenReply
                 var listenForFollowUp = false
-                var recordedCount = 0
 
                 when (result.action) {
                     "RECORD_TRANSACTION" -> {
-                        val capturedGps = withTimeoutOrNull(1800L) {
+                        val capturedGps = withTimeoutOrNull(4_200L) {
                             LocationHelper.fetchCurrentLocation(context)
                         }
-                        val activeAccounts = currentState.accountsWithBalances
-                            .map { it.account }
-                            .filter { !it.isArchived }
-
                         for (tx in result.transactionsToRecord) {
-                            // Analyze past transactions across varying amounts & timestamps!
-                            val pattern = TransactionPatternAnalyzer.analyzeForTransaction(
+                            val (replyText, needsFollowUp) = processVoiceTransactionWithSlotFilling(
+                                context = context,
                                 utterance = trimmedUtterance,
-                                fallbackType = tx.transactionType,
-                                fallbackCategory = tx.category,
-                                explicitLocationName = tx.locationName,
-                                explicitSourceAccountHint = tx.sourceAccountHint,
-                                explicitDestinationAccountHint = tx.destinationAccountHint,
-                                transactions = currentState.transactions,
-                                activeAccounts = activeAccounts
+                                tx = tx,
+                                capturedGps = capturedGps,
+                                isDemo = isDemo
                             )
-
-                            val resolvedType = pattern.inferredTransactionType
-                            val resolvedCategory = pattern.inferredCategory
-                            val resolvedLocation = pattern.inferredLocationName.ifBlank { capturedGps?.placeName.orEmpty() }
-
-                        // If multiple account options exist and historical pattern analysis didn't find a single dominant account,
-                        // ask the user which account option to select!
-                        if (pattern.requiresAccountDisambiguation && pattern.candidateAccounts.size >= 2) {
-                            val options = pattern.candidateAccounts.take(5).mapIndexed { idx, acc ->
-                                val bal = currentState.accountsWithBalances.firstOrNull { it.account.id == acc.id }?.closingBalancePaise ?: 0L
-                                VoiceDisambiguationOption(
-                                    index = idx + 1,
-                                    label = acc.name,
-                                    subtitle = "${acc.accountType.displayName} • ${InrMoney.formatPaise(bal)}",
-                                    entityId = acc.id
-                                )
-                            }
-                            val optionsSpokenList = options.joinToString(", or ") { "${it.index}. ${it.label}" }
-                            val amtFormatted = InrMoney.formatPaise(tx.amountPaise)
-                            val question = "Which account should I use for $amtFormatted ($resolvedCategory): $optionsSpokenList?"
-
-                            _pendingVoiceDisambiguation.value = PendingVoiceDisambiguation(
-                                title = "Select Account for $amtFormatted ($resolvedCategory)",
-                                questionPrompt = question,
-                                options = options,
-                                onSelectOption = { chosen ->
-                                    val txId = if (resolvedType == TransactionType.INCOME) {
-                                        repository.recordTransaction(
-                                            transactionType = TransactionType.INCOME,
-                                            dateEpochDay = IndianFinancialYear.todayEpochDay(),
-                                            amountPaise = tx.amountPaise,
-                                            destinationAccountId = chosen.entityId,
-                                            category = resolvedCategory,
-                                            description = tx.description,
-                                            locationName = resolvedLocation,
-                                            latitude = capturedGps?.latitude,
-                                            longitude = capturedGps?.longitude,
-                                            isDemo = isDemo
-                                        )
-                                    } else {
-                                        repository.recordTransaction(
-                                            transactionType = TransactionType.EXPENSE,
-                                            dateEpochDay = IndianFinancialYear.todayEpochDay(),
-                                            amountPaise = tx.amountPaise,
-                                            sourceAccountId = chosen.entityId,
-                                            category = resolvedCategory,
-                                            description = tx.description,
-                                            locationName = resolvedLocation,
-                                            latitude = capturedGps?.latitude,
-                                            longitude = capturedGps?.longitude,
-                                            isDemo = isDemo
-                                        )
-                                    }
-                                    lastUndoableVoiceAction = UndoableVoiceAction.CreatedTransaction(
-                                        transactionId = txId,
-                                        description = "$amtFormatted in $resolvedCategory"
-                                    )
-                                    TransactionRecallReminderManager.dismissInAppRecallPrompt(context)
-                                    "Recorded ${if (resolvedType == TransactionType.INCOME) "income" else "expense"} of $amtFormatted for $resolvedCategory using ${chosen.label}."
-                                }
-                            )
-                            finalSpokenReply = question
-                            listenForFollowUp = true
-                            break
-                        }
-
-                        // Otherwise execute immediately using the learned historical account (or explicit/default account)
-                        runCatching {
-                            when (resolvedType) {
-                                TransactionType.INCOME -> {
-                                    val dstAcc = pattern.preferredDestinationAccount
-                                        ?: repository.resolveOrCreateAccountForVoice(
-                                            spokenAccountHint = tx.destinationAccountHint.ifBlank { tx.sourceAccountHint },
-                                            isDemo = isDemo
-                                        )
-                                    val txId = repository.recordTransaction(
-                                        transactionType = TransactionType.INCOME,
-                                        dateEpochDay = IndianFinancialYear.todayEpochDay(),
-                                        amountPaise = tx.amountPaise,
-                                        destinationAccountId = dstAcc.id,
-                                        category = resolvedCategory,
-                                        description = tx.description,
-                                        locationName = resolvedLocation,
-                                        latitude = capturedGps?.latitude,
-                                        longitude = capturedGps?.longitude,
-                                        isDemo = isDemo
-                                    )
-                                    lastUndoableVoiceAction = UndoableVoiceAction.CreatedTransaction(
-                                        transactionId = txId,
-                                        description = "${InrMoney.formatPaise(tx.amountPaise)} income in $resolvedCategory"
-                                    )
-                                    val autoNote = if (pattern.isAccountAutoSelectedFromHistory) {
-                                        " into ${dstAcc.name} (auto-selected from your past transactions)"
-                                    } else " into ${dstAcc.name}"
-                                    finalSpokenReply = "Recorded income of ${InrMoney.formatPaise(tx.amountPaise)} for $resolvedCategory$autoNote."
-                                    recordedCount++
-                                }
-
-                                TransactionType.TRANSFER -> {
-                                    val srcAcc = pattern.preferredSourceAccount
-                                        ?: repository.resolveOrCreateAccountForVoice(
-                                            spokenAccountHint = tx.sourceAccountHint,
-                                            isDemo = isDemo
-                                        )
-                                    val dstAcc = pattern.preferredDestinationAccount
-                                        ?: repository.resolveOrCreateAccountForVoice(
-                                            spokenAccountHint = tx.destinationAccountHint.ifBlank { "Cash Wallet" },
-                                            isDemo = isDemo
-                                        )
-                                    val finalDstId = if (dstAcc.id == srcAcc.id) {
-                                        repository.createAccount(
-                                            name = tx.destinationAccountHint.ifBlank { "Secondary Account" },
-                                            accountType = AccountType.CASH,
-                                            openingBalancePaise = 0L,
-                                            isOpeningBalanceRecorded = false,
-                                            openingDateEpochDay = IndianFinancialYear.todayEpochDay(),
-                                            isDemo = isDemo
-                                        )
-                                    } else {
-                                        dstAcc.id
-                                    }
-                                    val txId = repository.recordTransaction(
-                                        transactionType = TransactionType.TRANSFER,
-                                        dateEpochDay = IndianFinancialYear.todayEpochDay(),
-                                        amountPaise = tx.amountPaise,
-                                        sourceAccountId = srcAcc.id,
-                                        destinationAccountId = finalDstId,
-                                        category = "Account Transfer",
-                                        description = tx.description,
-                                        locationName = resolvedLocation,
-                                        latitude = capturedGps?.latitude,
-                                        longitude = capturedGps?.longitude,
-                                        isDemo = isDemo
-                                    )
-                                    lastUndoableVoiceAction = UndoableVoiceAction.CreatedTransaction(
-                                        transactionId = txId,
-                                        description = "${InrMoney.formatPaise(tx.amountPaise)} transfer"
-                                    )
-                                    finalSpokenReply = "Recorded transfer of ${InrMoney.formatPaise(tx.amountPaise)} from ${srcAcc.name}."
-                                    recordedCount++
-                                }
-
-                                else -> {
-                                    val srcAcc = pattern.preferredSourceAccount
-                                        ?: repository.resolveOrCreateAccountForVoice(
-                                            spokenAccountHint = tx.sourceAccountHint,
-                                            isDemo = isDemo
-                                        )
-                                    val txId = repository.recordTransaction(
-                                        transactionType = TransactionType.EXPENSE,
-                                        dateEpochDay = IndianFinancialYear.todayEpochDay(),
-                                        amountPaise = tx.amountPaise,
-                                        sourceAccountId = srcAcc.id,
-                                        category = resolvedCategory,
-                                        description = tx.description,
-                                        locationName = resolvedLocation,
-                                        latitude = capturedGps?.latitude,
-                                        longitude = capturedGps?.longitude,
-                                        isDemo = isDemo
-                                    )
-                                    lastUndoableVoiceAction = UndoableVoiceAction.CreatedTransaction(
-                                        transactionId = txId,
-                                        description = "${InrMoney.formatPaise(tx.amountPaise)} expense in $resolvedCategory"
-                                    )
-                                    val placePart = if (resolvedLocation.isNotBlank()) " at $resolvedLocation" else ""
-                                    val autoNote = if (pattern.isAccountAutoSelectedFromHistory) {
-                                        " from ${srcAcc.name} (auto-selected from your past transactions)"
-                                    } else " from ${srcAcc.name}"
-                                    finalSpokenReply = "Recorded expense of ${InrMoney.formatPaise(tx.amountPaise)} for $resolvedCategory$placePart$autoNote."
-                                    recordedCount++
-                                }
+                            finalSpokenReply = replyText
+                            if (needsFollowUp) {
+                                listenForFollowUp = true
+                                break
                             }
                         }
                     }
-                    if (recordedCount > 0) {
-                        TransactionRecallReminderManager.dismissInAppRecallPrompt(context)
-                    }
-                }
 
                 "DELETE_TRANSACTION", "REVERSE_LAST_TRANSACTION" -> {
                     val activeTxs = currentState.transactions.filter { !it.isReversed }
@@ -2183,7 +2357,7 @@ class FinanceVaultViewModel(
                     totalBalanceFormatted = InrMoney.formatPaise(totalBalPaise),
                     monthlySpendingFormatted = InrMoney.formatPaise(updatedState.currentMonthTotalSpentPaise),
                     monthlyIncomeFormatted = InrMoney.formatPaise(updatedState.monthlyProfitAndLoss.totalIncomePaise),
-                    recordedTransactionsCount = recordedCount,
+                    recordedTransactionsCount = if (result.action == "RECORD_TRANSACTION" && !listenForFollowUp) result.transactionsToRecord.size else 0,
                     errorMessage = result.errorMessage
                 )
 
