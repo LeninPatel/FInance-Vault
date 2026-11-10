@@ -1,0 +1,15 @@
+<resources>
+    <string name="app_name">Finance Vault</string>
+    <string name="creator_credit">Made by Lenin and Shaswat</string>
+    <string name="currency_symbol">₹</string>
+    <string name="currency_code">INR</string>
+    <string name="not_provided">Not provided</string>
+    <string name="not_recorded">Not recorded</string>
+    <string name="awaiting_information">Awaiting information</string>
+    <string name="shortcut_voice_record_short">Voice Record</string>
+    <string name="shortcut_voice_record_long">Record Transaction by Voice</string>
+    <string name="shortcut_gemini_record_short">Gemini Record</string>
+    <string name="shortcut_gemini_record_long">Record Transaction with Gemini</string>
+    <string name="shortcut_gemini_query_short">Ask Gemini Vault</string>
+    <string name="shortcut_gemini_query_long">Ask Gemini Financial Info</string>
+</resources>

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <cache-path name="exports" path="exports/" />
+    <cache-path name="cache_root" path="." />
+    <files-path name="files_root" path="." />
+    <external-path name="external_root" path="." />
+</paths>

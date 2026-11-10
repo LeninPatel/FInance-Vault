@@ -1,0 +1,1562 @@
+# FINANCE VAULT
+## Complete Software Development Specification — Build a New Application from Scratch
+
+**Project Name:** Finance Vault  
+**Creators:** Made by Lenin and Shaswat  
+**Application Type:** Personal Finance Management, Accounting, Financial Records and Reporting System  
+**Primary Currency:** Indian Rupee (INR ₹)  
+**Primary Market:** India  
+**Development Environment:** Google AI Studio  
+**Platform:** Android-first application  
+**Development Approach:** Complete implementation from scratch
+
+---
+
+# 1. YOUR ROLE AND PRIMARY OBJECTIVE
+
+You are acting as the complete software development team responsible for designing, architecting, programming, implementing, testing, debugging, and delivering Finance Vault.
+
+You are not being asked to modify an existing application.
+
+You must build a completely new application from an empty project.
+
+You are responsible for:
+
+1. Designing the application architecture.
+2. Creating the complete project structure.
+3. Designing the database.
+4. Implementing the user interface.
+5. Implementing the financial calculation engine.
+6. Implementing the accounting engine.
+7. Implementing automatic financial record generation.
+8. Implementing Indian financial reporting formats.
+9. Implementing document generation and exports.
+10. Implementing security and data protection.
+11. Testing every calculation and feature.
+12. Fixing errors and delivering a functional application.
+
+Do not stop after generating a plan, wireframe, prototype, or frontend.
+
+**Build the actual working application, including its backend logic, database, financial calculations, and document generation systems.**
+
+You must make reasonable technical decisions independently and continue implementation without repeatedly asking me to approve ordinary programming decisions.
+
+If a feature requires additional information from the user, build the appropriate input form instead of inventing information.
+
+---
+
+# 2. CORE PURPOSE OF FINANCE VAULT
+
+Finance Vault is intended to be a comprehensive personal financial management system.
+
+It should allow an individual to manage practically every aspect of their financial life from one application.
+
+The application should provide:
+
+- Complete financial account management.
+- Income and expense tracking.
+- Cash and bank account management.
+- UPI and digital wallet tracking.
+- Credit and debit card management.
+- Loans and borrowing management.
+- Investment tracking.
+- Fixed deposits and recurring deposits.
+- Mutual funds and stocks.
+- Bonds and securities.
+- Gold and other assets.
+- Gift card management.
+- Budgets and savings goals.
+- Tax records.
+- Subscriptions and recurring payments.
+- Financial calculations.
+- Automatically generated accounting records.
+- Professionally formatted financial documents.
+- Net worth and financial performance reports.
+
+The objective is to create a single, reliable financial information system rather than several disconnected calculators and tracking screens.
+
+---
+
+# 3. STRICT USER-ENTERED INFORMATION POLICY
+
+This is one of the most important requirements.
+
+**Every real financial record must originate from information explicitly entered by the user or imported through a process initiated and approved by the user.**
+
+Never assume that the user owns a particular bank account, investment, asset, liability, or financial product.
+
+Never fabricate financial information.
+
+### Information that must be entered by the user
+
+This includes:
+
+- Personal details.
+- Bank information.
+- Account numbers.
+- IFSC codes.
+- Opening amounts.
+- Account balances.
+- Cash balances.
+- UPI accounts.
+- Wallet information.
+- Credit card information.
+- Loans.
+- Investment holdings.
+- Purchase prices.
+- Income.
+- Expenses.
+- Transactions.
+- Tax payments.
+- Financial goals.
+- Subscriptions.
+- Gift cards.
+- Asset values.
+- Liabilities.
+
+Do not automatically add SBI, HDFC, ICICI, Axis, or any other bank.
+
+Do not automatically create sample transactions or fake investments.
+
+Do not use device information, location, SIM information, or email information to assume financial details.
+
+### Missing information
+
+If information has not been entered, display:
+
+- Not provided
+- Not recorded
+- Awaiting information
+
+Do not automatically display ₹0 when the actual amount is unknown.
+
+### Optional demonstration data
+
+If a demonstration mode is implemented, it must be completely separate from the user's real financial data.
+
+Clearly label all demonstration information as fictional.
+
+Never mix demonstration records with real user records.
+
+---
+
+# 4. APPLICATION IDENTITY AND DESIGN
+
+The application must be named:
+
+**Finance Vault**
+
+Display the following creator credit:
+
+**Made by Lenin and Shaswat**
+
+Place this in the Settings → About section and, where appropriate, the application information screen.
+
+Do not use the following branding or features:
+
+- Finance Vault Pro
+- Finance Vault Pro Assistant
+- AI Assistant
+- Chatbot
+- Promotional Pro features
+- Android Studio button
+- Download App ZIP button
+- Android Frame button
+- Android device frame preview controls
+
+Do not create these buttons or sections in the new application.
+
+There should be no promotional interface for an imaginary premium version.
+
+### Visual design
+
+Use a premium, modern financial application design.
+
+Design direction:
+
+- Dark-first interface.
+- Premium fintech aesthetics.
+- Apple Wallet-inspired presentation.
+- Clean layouts inspired by modern financial dashboards.
+- Rounded cards.
+- Carefully designed typography.
+- Subtle glass effects.
+- Smooth transitions.
+- Interactive charts.
+- Consistent spacing.
+- Clear navigation.
+- Responsive Android layouts.
+
+The application should feel like a professionally developed financial product, not an AI-generated dashboard template.
+
+Avoid excessive gradients, unnecessary decorative elements, and overcrowded screens.
+
+---
+
+# 5. CURRENCY SYSTEM — INR ONLY
+
+Finance Vault must exclusively support Indian Rupees.
+
+Currency configuration:
+
+- Currency: Indian Rupee
+- Currency code: INR
+- Symbol: ₹
+- Minor unit: Paise
+
+Do not implement:
+
+- Currency selector.
+- Different Currency button.
+- Currency switching.
+- Foreign currency support.
+- Currency conversion.
+- Exchange rate APIs.
+- Exchange rate management.
+- USD, EUR, GBP, or other currency options.
+
+All financial records, calculations, charts, documents, and reports must use INR.
+
+### Indian number formatting
+
+Implement the Indian numbering system correctly.
+
+Examples:
+
+- ₹1,000
+- ₹10,000
+- ₹1,00,000
+- ₹10,00,000
+- ₹1,00,00,000
+
+Use lakh and crore terminology where appropriate.
+
+### Monetary precision
+
+Never use JavaScript floating-point arithmetic directly for monetary calculations.
+
+Store monetary values as integer paise.
+
+For example:
+
+₹1,250.50 = 125050 paise.
+
+Create reusable money utilities for:
+
+- Addition.
+- Subtraction.
+- Multiplication.
+- Division.
+- Rounding.
+- Percentage calculations.
+- Financial ratios.
+- Interest calculations.
+
+Define rounding rules explicitly and apply them consistently.
+
+---
+
+# 6. APPLICATION STRUCTURE AND MAIN SCREENS
+
+Create a complete navigation system with the following sections.
+
+## A. Dashboard
+
+The dashboard should provide an overview of the user's financial position.
+
+Display:
+
+- Total assets.
+- Total liabilities.
+- Net worth.
+- Total available cash and bank funds.
+- Monthly income.
+- Monthly expenses.
+- Monthly savings.
+- Investment value.
+- Outstanding loans.
+- Credit card dues.
+- Upcoming payments.
+- Upcoming deposit maturities.
+- Gift card balances.
+- Budget progress.
+- Recent transactions.
+- Financial activity timeline.
+- Asset distribution.
+- Income versus expense chart.
+- Monthly savings trend.
+
+All figures must be calculated from actual user records.
+
+Never hardcode dashboard values.
+
+Allow the user to hide sensitive amounts using a privacy control.
+
+## B. Accounts
+
+Support:
+
+- Cash accounts.
+- Savings accounts.
+- Current accounts.
+- Bank accounts.
+- Digital wallets.
+- UPI-linked account records.
+- Credit cards.
+- Other financial accounts.
+
+Allow users to:
+
+- Add accounts.
+- Edit account information.
+- View account details.
+- Record transactions.
+- View account activity.
+- Archive accounts.
+- Enter opening amounts.
+
+For bank accounts, allow optional information such as bank name, branch, account number, IFSC, and account holder.
+
+Never require unnecessary sensitive information.
+
+## C. Transactions
+
+Create a unified transaction management system.
+
+Support:
+
+- Income.
+- Expenses.
+- Transfers.
+- Deposits.
+- Withdrawals.
+- Refunds.
+- Loan disbursements.
+- Loan repayments.
+- Investment purchases.
+- Investment sales.
+- Interest received.
+- Dividends received.
+- Credit card purchases.
+- Credit card payments.
+- Corrections.
+
+Every transaction must contain the appropriate information:
+
+- Date.
+- Amount.
+- Transaction type.
+- Source account.
+- Destination account, if applicable.
+- Category.
+- Description.
+- Reference.
+- Notes.
+- Attachments.
+
+Provide search, sorting, filtering, and date-range selection.
+
+## D. Investments
+
+Support:
+
+- Equity shares.
+- Exchange-traded funds.
+- Mutual funds.
+- SIPs.
+- Fixed deposits.
+- Recurring deposits.
+- Bonds.
+- Government securities.
+- Gold.
+- Silver.
+- Other user-defined investments.
+
+Allow users to enter:
+
+- Investment name.
+- Investment category.
+- Purchase date.
+- Quantity.
+- Units.
+- Purchase price.
+- Charges.
+- Investment account.
+- Maturity date.
+- Interest rate, where applicable.
+- Notes.
+
+Calculate investment performance using recorded information.
+
+Distinguish:
+
+- Invested amount.
+- Current recorded value.
+- Realized profit or loss.
+- Unrealized profit or loss.
+- Interest earned.
+- Dividends received.
+- Overall return.
+
+Do not fabricate current market values.
+
+If an authorized external market data integration is added in the future, clearly identify externally retrieved values and their retrieval dates.
+
+## E. Loans and Credit Cards
+
+Support:
+
+- Personal loans.
+- Education loans.
+- Other borrowings.
+- Credit card outstanding amounts.
+- EMI schedules.
+- Interest rates.
+- Repayment history.
+- Remaining principal.
+- Outstanding liabilities.
+
+Calculate amortization schedules using the actual loan terms entered by the user.
+
+## F. Budgets and Goals
+
+Allow users to create:
+
+- Monthly budgets.
+- Category budgets.
+- Annual budgets.
+- Savings goals.
+- Emergency fund goals.
+- Purchase goals.
+
+Calculate progress using recorded transactions and contributions.
+
+## G. Gift Cards
+
+Allow users to store:
+
+- Brand.
+- Gift card name.
+- Initial value.
+- Remaining value.
+- Expiration date.
+- Purchase date.
+- Card number.
+- PIN or redemption information.
+- Notes.
+
+Protect sensitive redemption information.
+
+## H. Subscriptions
+
+Allow users to record:
+
+- Subscription name.
+- Cost.
+- Billing frequency.
+- Renewal date.
+- Payment account.
+- Start date.
+- End date.
+- Notes.
+
+Calculate monthly and annual equivalent costs.
+
+Do not automatically record subscription payments unless the user confirms or an explicitly configured workflow authorizes it.
+
+## I. Taxes
+
+Create a tax management section for:
+
+- Income tax.
+- TDS.
+- Advance tax.
+- Self-assessment tax.
+- GST records where applicable.
+- Other tax-related payments.
+
+Allow users to record their own tax information, payment details, due dates, financial year, assessment year, and supporting documents.
+
+Provide calculations and summaries where the required information is available.
+
+Do not present estimates as official tax calculations or professional tax advice.
+
+## J. Analytics
+
+Provide:
+
+- Net worth history.
+- Income trends.
+- Expense trends.
+- Cash flow.
+- Investment performance.
+- Asset distribution.
+- Liability distribution.
+- Savings rate.
+- Category analysis.
+- Monthly and annual comparisons.
+
+All analytics must be derived from recorded data.
+
+---
+
+# 7. THE AUTOMATIC ACCOUNTING ENGINE
+
+This is the most important technical component of Finance Vault.
+
+The user should not have to manually create accounting records every time they add a transaction.
+
+Instead, implement a complete automatic accounting engine.
+
+The user enters a single transaction through the normal interface.
+
+The application must then automatically:
+
+1. Validate the transaction.
+2. Identify the transaction's financial nature.
+3. Identify the affected accounts.
+4. Determine which accounts increase or decrease.
+5. Generate the corresponding internal accounting records.
+6. Update the affected account histories.
+7. Recalculate relevant financial figures.
+8. Update financial summaries.
+9. Update financial statements.
+10. Preserve the transaction history.
+11. Record the operation in the audit history.
+
+This process must be automatic, consistent, and reliable.
+
+The accounting engine must use double-entry bookkeeping.
+
+### Required internal accounting structure
+
+Implement these internal data concepts:
+
+- Chart of Accounts.
+- Journal records.
+- Individual account ledgers.
+- Debit and credit records.
+- Voucher numbering.
+- Posting status.
+- Opening entries.
+- Adjustment records.
+- Reversal records.
+- Accounting periods.
+- Audit history.
+
+These are backend accounting mechanisms. They do not need to be exposed as complicated terminology in the normal user interface.
+
+### Double-entry rule
+
+Every posted transaction must have equal total debits and credits.
+
+\[
+\text{Total Debits}=\text{Total Credits}
+\]
+
+Reject invalid accounting operations.
+
+Do not save incomplete accounting records.
+
+Use database transactions to ensure that the original transaction, accounting records, and updated summaries are committed together.
+
+---
+
+# 8. EXACT ACCOUNTING RULES AND TRANSACTION CALCULATIONS
+
+Implement the following accounting rules directly in the application.
+
+These examples are mandatory test cases.
+
+## Example 1: Recording income
+
+The user records ₹10,000 received into a bank account.
+
+Internal accounting:
+
+| Account | Debit | Credit |
+|---|---:|---:|
+| Bank Account | ₹10,000 | — |
+| Income | — | ₹10,000 |
+
+Effects:
+
+- Bank balance increases by ₹10,000.
+- Income increases by ₹10,000.
+- Total assets increase by ₹10,000.
+- Net worth increases by ₹10,000.
+
+## Example 2: Recording an expense
+
+The user records ₹500 spent from a bank account.
+
+| Account | Debit | Credit |
+|---|---:|---:|
+| Expense | ₹500 | — |
+| Bank Account | — | ₹500 |
+
+Effects:
+
+- Bank balance decreases by ₹500.
+- Expenses increase by ₹500.
+- Surplus decreases by ₹500.
+- Net worth decreases by ₹500.
+
+## Example 3: Transferring money between owned accounts
+
+The user transfers ₹2,000 from SBI to HDFC.
+
+| Account | Debit | Credit |
+|---|---:|---:|
+| HDFC Bank | ₹2,000 | — |
+| SBI Bank | — | ₹2,000 |
+
+Effects:
+
+- SBI decreases by ₹2,000.
+- HDFC increases by ₹2,000.
+- Total assets remain unchanged.
+- Income does not increase.
+- Expenses do not increase.
+
+This rule is essential. Transfers between the user's own accounts must never be counted as income or expenses.
+
+## Example 4: Credit card purchase
+
+The user purchases an item worth ₹3,000 using a credit card.
+
+| Account | Debit | Credit |
+|---|---:|---:|
+| Expense | ₹3,000 | — |
+| Credit Card Liability | — | ₹3,000 |
+
+Effects:
+
+- Expense increases by ₹3,000.
+- Credit card liability increases by ₹3,000.
+- Bank balance does not change.
+
+## Example 5: Credit card repayment
+
+The user pays ₹3,000 from their bank account towards their credit card.
+
+| Account | Debit | Credit |
+|---|---:|---:|
+| Credit Card Liability | ₹3,000 | — |
+| Bank Account | — | ₹3,000 |
+
+Effects:
+
+- Bank balance decreases.
+- Credit card liability decreases.
+- No new expense is recorded because the purchase was already recorded.
+
+## Example 6: Investment purchase
+
+The user purchases investments worth ₹5,000 using their bank account.
+
+| Account | Debit | Credit |
+|---|---:|---:|
+| Investment Asset | ₹5,000 | — |
+| Bank Account | — | ₹5,000 |
+
+Effects:
+
+- Bank balance decreases.
+- Investment assets increase.
+- The purchase is not treated as an ordinary expense.
+- Net worth does not immediately decrease.
+
+Handle brokerage and other acquisition costs separately according to the applicable accounting policy.
+
+## Example 7: Loan received
+
+The user receives a loan of ₹50,000 into their bank account.
+
+| Account | Debit | Credit |
+|---|---:|---:|
+| Bank Account | ₹50,000 | — |
+| Loan Liability | — | ₹50,000 |
+
+Effects:
+
+- Bank balance increases.
+- Loan liability increases.
+- Net worth does not automatically increase.
+
+## Example 8: Loan repayment
+
+The user repays ₹5,000, consisting of ₹4,000 principal and ₹1,000 interest.
+
+| Account | Debit | Credit |
+|---|---:|---:|
+| Loan Liability | ₹4,000 | — |
+| Interest Expense | ₹1,000 | — |
+| Bank Account | — | ₹5,000 |
+
+Effects:
+
+- Loan liability decreases by ₹4,000.
+- Interest expense increases by ₹1,000.
+- Bank balance decreases by ₹5,000.
+
+## Example 9: Interest received
+
+The user receives ₹500 interest in their bank account.
+
+| Account | Debit | Credit |
+|---|---:|---:|
+| Bank Account | ₹500 | — |
+| Interest Income | — | ₹500 |
+
+## Example 10: Refund received
+
+The user receives a refund of ₹500 for a previously recorded purchase.
+
+The system must link the refund to the original expense whenever possible and reverse or adjust the appropriate amount.
+
+It must not incorrectly record the refund as unrelated income.
+
+### Additional transaction scenarios
+
+Also implement and test:
+
+- Cash deposits.
+- Cash withdrawals.
+- Bank charges.
+- Dividends.
+- Fixed deposit creation.
+- Fixed deposit maturity.
+- Recurring deposit contributions.
+- Recurring deposit maturity.
+- Interest accruals.
+- Investment sales.
+- Realized gains and losses.
+- Investment fees.
+- Gift card purchases and usage.
+- Tax payments.
+- EMI payments.
+- Loan interest accruals.
+- Reimbursements.
+- Reversed transactions.
+- Corrections.
+
+For investment sales, correctly separate the proceeds, disposal of the recorded investment cost, and resulting realized gain or loss.
+
+Do not recognize the full sale proceeds as income.
+
+For deposits and investments, do not double-count principal and interest.
+
+Where a transaction cannot be classified reliably because information is missing, ask the user for the missing information instead of guessing.
+
+---
+
+# 9. AUTOMATIC CREATION OF FINANCIAL DOCUMENTS
+
+The application must generate all financial reports automatically from the internal accounting records.
+
+The user must not manually prepare each document.
+
+A single confirmed transaction should automatically flow through the accounting system and affect every relevant report.
+
+For example:
+
+When the user records a ₹1,000 expense:
+
+1. Save the original transaction.
+2. Create the appropriate internal debit and credit records.
+3. Update the affected account's transaction history.
+4. Recalculate the account's closing amount.
+5. Recalculate total expenses.
+6. Recalculate monthly cash flow.
+7. Recalculate the financial period's surplus or deficit.
+8. Recalculate net worth.
+9. Update the dashboard.
+10. Update the relevant financial reports.
+
+Do not independently calculate the same financial figure in several unrelated modules.
+
+Use one central accounting engine as the source of truth.
+
+---
+
+# 10. INDIAN ACCOUNTING DOCUMENT FORMATS
+
+The application must implement the following document formats using the structures described below.
+
+Do not rely on the model to guess Indian accounting formats.
+
+Implement the layouts and calculation rules explicitly.
+
+## A. Journal Book
+
+Generate a chronological record of all posted accounting transactions.
+
+Required columns:
+
+| Date | Particulars | Ledger Folio | Debit (₹) | Credit (₹) |
+|---|---|---|---:|---:|
+
+Each transaction must contain the necessary debit and credit account lines.
+
+Include narration and voucher reference information.
+
+## B. Individual Account Ledger
+
+Maintain a separate history for every account.
+
+Required columns:
+
+| Date | Particulars | Voucher No. | Debit (₹) | Credit (₹) | Balance (₹) |
+|---|---|---|---:|---:|---:|
+
+Calculate the running amount correctly according to the account's normal balance.
+
+For debit-normal accounts:
+
+Closing balance = Opening balance + Debits − Credits.
+
+For credit-normal accounts:
+
+Closing balance = Opening balance + Credits − Debits.
+
+Display debit and credit balances appropriately.
+
+## C. Trial Balance
+
+Generate a Trial Balance for the selected date.
+
+Required format:
+
+| Name of Account | Debit Balance (₹) | Credit Balance (₹) |
+|---|---:|---:|
+
+Include total debit and total credit.
+
+The two totals must agree.
+
+Generate it directly from the posted account records, not from manually stored totals.
+
+## D. Balance Sheet
+
+Generate a properly classified personal Balance Sheet.
+
+Title:
+
+**BALANCE SHEET AS AT [DATE]**
+
+Structure:
+
+| Particulars | Amount (₹) |
+|---|---:|
+| **ASSETS** | |
+| Non-Current Assets | |
+| Investments | |
+| Property and Other Long-Term Assets | |
+| Current Assets | |
+| Cash and Cash Equivalents | |
+| Bank Balances | |
+| Other Current Assets | |
+| **TOTAL ASSETS** | |
+| **LIABILITIES** | |
+| Non-Current Liabilities | |
+| Loans and Borrowings | |
+| Current Liabilities | |
+| Credit Card Outstanding | |
+| Other Payables | |
+| **TOTAL LIABILITIES** | |
+| **PERSONAL NET WORTH** | |
+| Opening Capital | |
+| Additional Contributions | |
+| Accumulated Surplus | |
+| Less: Drawings, where applicable | |
+| **TOTAL NET WORTH** | |
+| **TOTAL LIABILITIES AND NET WORTH** | |
+
+Calculation:
+
+\[
+\text{Net Worth}=\text{Total Assets}-\text{Total Liabilities}
+\]
+
+Verify:
+
+\[
+\text{Total Assets}=\text{Total Liabilities}+\text{Net Worth}
+\]
+
+Use correct classifications based on the nature and expected realization period of assets and liabilities.
+
+Do not treat all assets as cash or all investments as current assets.
+
+## E. Statement of Profit and Loss
+
+Title:
+
+**STATEMENT OF PROFIT AND LOSS FOR THE PERIOD ENDED [DATE]**
+
+Structure:
+
+| Particulars | Amount (₹) |
+|---|---:|
+| Income | |
+| Salary Income | |
+| Business Income | |
+| Interest Income | |
+| Dividend Income | |
+| Other Income | |
+| **TOTAL INCOME** | |
+| Expenses | |
+| Household Expenses | |
+| Education Expenses | |
+| Transportation Expenses | |
+| Utilities | |
+| Healthcare | |
+| Interest Expenses | |
+| Bank Charges | |
+| Taxes and Other Expenses | |
+| **TOTAL EXPENSES** | |
+| **SURPLUS / DEFICIT FOR THE PERIOD** | |
+
+Calculation:
+
+\[
+\text{Surplus or Deficit}=\text{Total Income}-\text{Total Expenses}
+\]
+
+Only recognized income and expenses should be included.
+
+Transfers between owned accounts, loan principal repayments, and investment purchases must not be incorrectly included as expenses.
+
+## F. Cash Flow Statement
+
+Use three classifications:
+
+1. Operating Activities.
+2. Investing Activities.
+3. Financing Activities.
+
+Title:
+
+**CASH FLOW STATEMENT FOR THE PERIOD ENDED [DATE]**
+
+Include:
+
+- Cash received from income.
+- Cash paid for expenses.
+- Interest received.
+- Investment purchases.
+- Investment sales.
+- Loans received.
+- Loan principal repayments.
+- Capital contributions.
+- Other relevant cash movements.
+
+Reconcile opening cash and cash equivalents to closing cash and cash equivalents.
+
+Use a consistent cash-flow classification policy.
+
+Make it clear that this is an adapted personal cash flow statement, not automatically a statutory company statement under Ind AS 7 or AS 3.
+
+## G. Other financial documents
+
+Also generate:
+
+- Statement of Changes in Net Worth.
+- Investment Portfolio Statement.
+- Income and Expense Summary.
+- Monthly Financial Summary.
+- Annual Financial Summary.
+- Loan Outstanding Statement.
+- Credit Card Outstanding Statement.
+- Fixed Deposit Schedule.
+- Recurring Deposit Schedule.
+- Tax Payment Summary.
+- Asset and Liability Schedule.
+
+Every report must be calculated from the same underlying records.
+
+---
+
+# 11. INDIAN FINANCIAL YEAR AND ACCOUNTING PERIODS
+
+Use the Indian financial year by default.
+
+Financial year:
+
+**1 April to 31 March**
+
+Examples:
+
+- FY 2025–26: 1 April 2025 to 31 March 2026.
+- FY 2026–27: 1 April 2026 to 31 March 2027.
+
+Support:
+
+- Monthly periods.
+- Quarterly periods.
+- Financial years.
+- Calendar years.
+- Custom date ranges.
+
+Implement appropriate opening and closing period handling.
+
+Do not confuse financial year and assessment year.
+
+Provide appropriate year-end closing and carry-forward procedures.
+
+Do not delete previous financial records when a new financial year begins.
+
+---
+
+# 12. FINANCIAL CALCULATION ENGINE
+
+Create reusable, tested financial calculation modules.
+
+### Account calculations
+
+- Opening amount.
+- Total debits.
+- Total credits.
+- Closing amount.
+- Available amount.
+- Outstanding amount.
+
+### Income and expense calculations
+
+- Total income.
+- Total expenses.
+- Net surplus or deficit.
+- Category-wise expenses.
+- Monthly averages.
+- Yearly totals.
+- Savings rate.
+
+Savings rate:
+
+\[
+\text{Savings Rate}=
+\frac{\text{Income}-\text{Expenses}}{\text{Income}}\times100
+\]
+
+Handle zero income without division errors.
+
+### Net worth
+
+\[
+\text{Net Worth}=\text{Assets}-\text{Liabilities}
+\]
+
+### Investment calculations
+
+Implement:
+
+- Invested capital.
+- Current recorded value.
+- Realized profit or loss.
+- Unrealized profit or loss.
+- Absolute return.
+- Annualized return.
+- CAGR where appropriate.
+- XIRR for irregular cash flows.
+- Average purchase cost.
+- Investment allocation.
+
+Do not use CAGR where the cash-flow pattern makes it inappropriate.
+
+### Loan calculations
+
+Implement:
+
+- EMI.
+- Principal outstanding.
+- Interest component.
+- Principal component.
+- Total interest payable.
+- Amortization schedule.
+- Remaining installments.
+
+For a standard monthly reducing-balance loan:
+
+\[
+EMI=\frac{P\times r\times(1+r)^n}{(1+r)^n-1}
+\]
+
+Where:
+
+- \(P\) = Principal.
+- \(r\) = Monthly interest rate.
+- \(n\) = Number of monthly installments.
+
+Handle zero-interest loans separately.
+
+### Deposit calculations
+
+Implement fixed deposit and recurring deposit calculations using the actual terms entered by the user.
+
+Clearly distinguish projected maturity amounts from actual received amounts.
+
+Do not assume interest compounding frequencies.
+
+---
+
+# 13. INTERNAL DATABASE AND SOFTWARE ARCHITECTURE
+
+Build the application with a proper modular architecture.
+
+Preferred technology stack:
+
+- React Native.
+- Expo SDK 55.
+- TypeScript.
+- Expo Router.
+- SQLite.
+- Drizzle ORM.
+- Zustand for UI state.
+- React Native Reanimated.
+- React Native SVG.
+- A reliable charting library.
+- Expo SecureStore.
+- Expo Local Authentication.
+- Expo Notifications.
+- Expo File System.
+- Expo Document Picker.
+- Expo Sharing.
+
+Use compatible, maintained versions and verify package compatibility before implementation.
+
+### Core database tables
+
+Implement appropriately normalized tables for:
+
+- users
+- settings
+- accounts
+- account_categories
+- transactions
+- journal_entries
+- journal_lines
+- ledger_accounts
+- investments
+- investment_transactions
+- investment_price_history
+- loans
+- loan_payments
+- subscriptions
+- gift_cards
+- gift_card_transactions
+- budgets
+- goals
+- taxes
+- attachments
+- notification_schedules
+- accounting_periods
+- audit_logs
+- snapshots
+- schema_versions
+
+The database must support:
+
+- Unique identifiers.
+- Foreign keys.
+- Proper indexes.
+- Data validation.
+- Versioned migrations.
+- Soft deletion where appropriate.
+- Audit history.
+- Referential integrity.
+- Atomic operations.
+
+### Architecture separation
+
+Use the following separation:
+
+UI Components  
+→ Application Features  
+→ State Management  
+→ Financial Domain Logic  
+→ Accounting Engine  
+→ Services  
+→ Repositories  
+→ Drizzle ORM  
+→ SQLite Database
+
+The user interface must never directly perform complicated financial calculations.
+
+The accounting engine must be independent of the UI.
+
+---
+
+# 14. OFFLINE-FIRST OPERATION
+
+The core application must work without an internet connection.
+
+All essential functionality must work locally:
+
+- Account creation.
+- Transaction creation.
+- Accounting calculations.
+- Financial reports.
+- Investments.
+- Budgets.
+- Goals.
+- Document generation.
+- Backup and restoration.
+
+Do not make a cloud service mandatory.
+
+Do not require an online AI model to perform basic accounting calculations.
+
+Financial calculations must be deterministic and performed by the application's own code.
+
+Optional external integrations can be added later, but they must not be dependencies for core functionality.
+
+---
+
+# 15. SECURITY AND PRIVACY
+
+Implement:
+
+- PIN-based access.
+- Optional biometric authentication.
+- Auto-lock.
+- Secure storage for secrets.
+- Hidden balance mode.
+- Privacy screen.
+- Sensitive field protection.
+- Backup encryption where properly implemented.
+- User-controlled data export.
+- User-controlled data deletion.
+
+Never store authentication PINs as plain text.
+
+Never claim that the entire database is encrypted unless actual database encryption is implemented and verified.
+
+Avoid exposing account numbers or sensitive information in logs, notifications, or exports.
+
+---
+
+# 16. FINANCIAL DOCUMENT GENERATION
+
+Create a professional document generation system.
+
+Supported formats:
+
+- PDF.
+- Excel (.xlsx).
+- CSV.
+- JSON backup.
+
+PDF documents should include:
+
+- Document title.
+- User name, if supplied.
+- Reporting period.
+- Financial year.
+- Generation date.
+- Indian Rupee formatting.
+- Structured tables.
+- Totals and subtotals.
+- Page numbering.
+- Professional layout.
+
+Allow previewing before exporting.
+
+Allow the user to select the reporting period and relevant accounts.
+
+Never include sensitive account information by default.
+
+All exported figures must match the application.
+
+---
+
+# 17. AUTOMATED VALIDATION AND TESTING
+
+You must write actual automated tests.
+
+Do not assume that calculations are correct simply because the application runs.
+
+### Accounting tests
+
+Test:
+
+- Income.
+- Expenses.
+- Transfers.
+- Credit card purchases.
+- Credit card repayments.
+- Loan receipts.
+- Loan repayments.
+- Investment purchases.
+- Investment sales.
+- Refunds.
+- Interest.
+- Dividends.
+- Opening amounts.
+- Reversals.
+
+For every accounting operation, verify that total debits equal total credits.
+
+### Financial document tests
+
+Verify:
+
+- Individual account histories.
+- Running amounts.
+- Closing amounts.
+- Trial Balance totals.
+- Balance Sheet equation.
+- Profit and Loss calculations.
+- Cash Flow reconciliation.
+- Net worth.
+- Investment returns.
+- Loan schedules.
+
+### Integration test
+
+Use this example:
+
+Initial records:
+
+- Bank account opening amount: ₹50,000.
+- Cash opening amount: ₹5,000.
+
+Then enter these transactions:
+
+1. Salary received: ₹20,000 into bank.
+2. Household expense: ₹2,000 from bank.
+3. Transfer: ₹5,000 from bank to cash.
+4. Credit card purchase: ₹1,000.
+5. Credit card repayment: ₹500 from bank.
+6. Investment purchase: ₹3,000 from bank.
+
+Expected results:
+
+- Bank: ₹59,500.
+- Cash: ₹10,000.
+- Credit card liability: ₹500.
+- Investment assets: ₹3,000.
+- Total assets: ₹73,000.
+- Total liabilities: ₹500.
+- Net worth: ₹72,500.
+- Recorded salary income: ₹20,000.
+- Recorded household expenses: ₹2,000.
+- Investment purchase is not an ordinary expense.
+- Bank-to-cash transfer is not income or expense.
+- Credit card repayment does not record the purchase expense again.
+
+The Balance Sheet must reconcile.
+
+All journal records must balance.
+
+If any expected result differs, identify and fix the accounting logic before considering the feature complete.
+
+---
+
+# 18. USER INTERFACE LANGUAGE
+
+Although the application must perform proper accounting internally, the normal user interface must be understandable to someone without formal accounting education.
+
+Do not make technical accounting terminology the primary navigation language.
+
+Prefer the following:
+
+| Avoid technical interface labels | Use understandable labels |
+|---|---|
+| Journal Entry | Transaction Record |
+| General Ledger | Account Activity |
+| Trial Balance | Accounts Summary |
+| Debit / Credit | Money In / Money Out, where appropriate |
+| Chart of Accounts | Financial Categories |
+| Profit and Loss Account | Income & Expenses |
+| Balance Sheet | Financial Position |
+| Cash Flow Statement | Money Movement |
+| Voucher | Transaction Type |
+| Reconciliation | Account Matching |
+| Ledger Posting | Automatic Record Update |
+
+Important: These are interface-label changes, not permission to remove the underlying accounting system.
+
+The actual accounting engine must still maintain proper debit and credit records, individual account histories, and automatically generated financial statements.
+
+Provide an optional detailed accounting view for users who want to inspect the underlying records.
+
+The application should be simple to operate but sophisticated internally.
+
+---
+
+# 19. NAVIGATION STRUCTURE
+
+Use a clean bottom navigation system.
+
+Suggested main tabs:
+
+1. Home
+2. Accounts
+3. Activity
+4. Investments
+5. More
+
+The More section should contain:
+
+- Budgets.
+- Goals.
+- Loans.
+- Credit Cards.
+- Gift Cards.
+- Subscriptions.
+- Taxes.
+- Reports.
+- Analytics.
+- Settings.
+
+Use a floating action button for adding transactions.
+
+The interface must remain uncluttered and responsive.
+
+---
+
+# 20. APPLICATION IDENTITY AND FINAL UI RESTRICTIONS
+
+The final application must use:
+
+**Finance Vault**
+
+**Made by Lenin and Shaswat**
+
+Do not include:
+
+- Finance Vault Pro.
+- Finance Vault Pro Assistant.
+- Any AI assistant or chatbot.
+- Android Studio button.
+- Download App ZIP button.
+- Android Frame button.
+- Currency selector.
+- Different Currency button.
+- Foreign currency options.
+- Fake premium upgrade sections.
+- Non-functional promotional controls.
+
+INR must be the only currency throughout the application.
+
+---
+
+# 21. DEVELOPMENT EXECUTION PLAN
+
+Build the application in a structured implementation sequence.
+
+### Phase 1 — Foundation
+- Create a new project.
+- Configure dependencies.
+- Set up navigation.
+- Create the database.
+- Implement database migrations.
+- Create the design system.
+- Implement application settings.
+
+### Phase 2 — Financial records
+- Accounts.
+- Transactions.
+- Categories.
+- Opening amounts.
+- Income and expenses.
+- Transfers.
+- Loans.
+- Investments.
+
+### Phase 3 — Accounting engine
+- Account classification.
+- Automatic accounting record generation.
+- Debit and credit handling.
+- Individual account histories.
+- Running amount calculations.
+- Reversals and corrections.
+- Audit trail.
+
+### Phase 4 — Financial calculations
+- Net worth.
+- Income and expenses.
+- Cash flow.
+- Investment calculations.
+- Loan calculations.
+- Deposit calculations.
+- Budgets.
+- Goals.
+
+### Phase 5 — Financial documents
+- Journal Book.
+- Individual Account Ledgers.
+- Trial Balance.
+- Personal Balance Sheet.
+- Statement of Profit and Loss.
+- Cash Flow Statement.
+- Supporting schedules.
+
+### Phase 6 — Advanced functionality
+- PDF generation.
+- Excel exports.
+- CSV import and export.
+- JSON backup.
+- Notifications.
+- Privacy controls.
+
+### Phase 7 — Testing and optimization
+- Unit tests.
+- Integration tests.
+- Database tests.
+- Accounting accuracy tests.
+- Financial document reconciliation.
+- Performance optimization.
+- UI testing.
+- Error correction.
+
+Do not move forward while critical data integrity or accounting errors remain unresolved.
+
+---
+
+# 22. FINAL ACCEPTANCE CRITERIA
+
+Finance Vault is complete only when all the following are true:
+
+1. It is a completely new application built from scratch.
+2. All real financial information is entered by the user or explicitly imported and confirmed.
+3. It uses INR exclusively.
+4. The interface is simple and understandable.
+5. A single user-entered transaction automatically generates all necessary internal accounting records.
+6. Every affected account history updates correctly.
+7. Financial calculations update automatically.
+8. All financial documents are generated from the same accounting data.
+9. Journal records balance.
+10. Individual account histories are accurate.
+11. Trial Balance totals agree.
+12. The Balance Sheet reconciles.
+13. Cash Flow figures reconcile.
+14. Investment calculations are correct.
+15. Loan and deposit calculations are correct.
+16. Documents follow the specified Indian accounting presentation.
+17. The application works offline for all essential functions.
+18. Data can be backed up and restored.
+19. Sensitive financial information is protected.
+20. The interface contains none of the prohibited buttons, assistant branding, or currency options.
+21. The application displays "Made by Lenin and Shaswat".
+
+# FINAL DIRECTIVE
+
+Do not respond with another development plan.
+
+Do not generate only a frontend prototype.
+
+Do not use hardcoded financial figures to simulate functionality.
+
+Do not leave buttons that have no working implementation.
+
+Do not skip the accounting engine or financial calculations.
+
+**Build the complete Finance Vault application from scratch.**
+
+Make the actual software, database, accounting engine, financial calculation modules, financial document generator, and user interface.
+
+Prioritize financial accuracy, data integrity, security, and reliability over superficial visual completeness.
+
+Continue implementing, testing, debugging, and improving the application until the acceptance criteria are satisfied.

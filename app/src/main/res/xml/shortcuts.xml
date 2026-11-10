@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Static & Voice Shortcut: Hands-Free Voice Record Transaction -->
+    <shortcut
+        android:shortcutId="voice_record_transaction"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_voice_record_short"
+        android:shortcutLongLabel="@string/shortcut_voice_record_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.aistudio.financevault.asslew"
+            android:targetClass="com.example.MainActivity"
+            android:data="vault://voice-record" />
+        <categories android:name="android.shortcut.conversation" />
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="voice record transaction" />
+        </capability-binding>
+    </shortcut>
+
+    <!-- Gemini / Assistant Shortcut: Record Transaction -->
+    <shortcut
+        android:shortcutId="gemini_record_transaction"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_gemini_record_short"
+        android:shortcutLongLabel="@string/shortcut_gemini_record_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.aistudio.financevault.asslew"
+            android:targetClass="com.example.MainActivity"
+            android:data="vault://record-transaction" />
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="record transaction" />
+        </capability-binding>
+    </shortcut>
+
+    <!-- Gemini / Assistant Shortcut: Get Financial Information -->
+    <shortcut
+        android:shortcutId="gemini_query_finance"
+        android:enabled="true"
+        android:icon="@mipmap/ic_launcher"
+        android:shortcutShortLabel="@string/shortcut_gemini_query_short"
+        android:shortcutLongLabel="@string/shortcut_gemini_query_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.aistudio.financevault.asslew"
+            android:targetClass="com.example.MainActivity"
+            android:data="vault://query-finance" />
+        <capability-binding android:key="actions.intent.OPEN_APP_FEATURE">
+            <parameter-binding
+                android:key="feature"
+                android:value="financial info" />
+        </capability-binding>
+    </shortcut>
+
+    <!-- App Actions Capabilities for Google Gemini & Google Assistant -->
+    <capability android:name="actions.intent.OPEN_APP_FEATURE">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.aistudio.financevault.asslew"
+            android:targetClass="com.example.MainActivity">
+            <url-template android:value="vault://assistant{?feature,query,amount,category,merchant,type,account}" />
+            <parameter
+                android:name="feature"
+                android:key="feature" />
+        </intent>
+    </capability>
+
+    <capability android:name="actions.intent.CREATE_MONEY_TRANSFER">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.aistudio.financevault.asslew"
+            android:targetClass="com.example.MainActivity">
+            <url-template android:value="vault://record-transaction{?amount,category,merchant,type,account,query}" />
+            <parameter
+                android:name="moneyTransfer.amount"
+                android:key="amount" />
+            <parameter
+                android:name="moneyTransfer.transferMode"
+                android:key="type" />
+        </intent>
+    </capability>
+
+    <capability android:name="actions.intent.GET_ACCOUNT">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.aistudio.financevault.asslew"
+            android:targetClass="com.example.MainActivity">
+            <url-template android:value="vault://query-finance{?account,query}" />
+            <parameter
+                android:name="account.name"
+                android:key="account" />
+        </intent>
+    </capability>
+
+</shortcuts>

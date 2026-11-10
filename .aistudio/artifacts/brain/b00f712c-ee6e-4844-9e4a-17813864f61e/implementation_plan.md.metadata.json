@@ -1,0 +1,6 @@
+{
+  "summary":  "Implementation plan for 4-second microphone delay & auto-close timer, instant mute/cancel control across listening/processing/speaking states, and reliable voice deletion with multi-option disambiguation across all modules.",
+  "updatedAt":  "2026-11-10T19:31:10.102392834Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

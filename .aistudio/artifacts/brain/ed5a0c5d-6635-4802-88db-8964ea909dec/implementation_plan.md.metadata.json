@@ -1,0 +1,6 @@
+{
+  "summary":  "Implementation plan for top search bar history (last 5 terms), 1.5-second hold-and-drag batch transaction selection with bulk reversal/delete and bulk categorization, and removal of all window subtitle descriptions across the app.",
+  "updatedAt":  "2026-11-09T16:53:00.070120415Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}
